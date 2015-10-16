@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 
 #include "sr_if.h"
@@ -31,6 +33,18 @@
  *---------------------------------------------------------------------*/
 
 struct sr_if *if_walker;
+uint8_t* create_reply_packet (uint8_t *packet, struct sr_if *if_walker, int packet_len);
+int check_receiver (struct sr_arp_hdr_t* arp_hdr, struct sr_instance* sr);
+void sr_arphandler (struct sr_instance* sr,
+        uint8_t * packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */);
+
+void sr_iphandler (struct sr_instance* sr,
+        uint8_t * packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */);
+
 
 void sr_init(struct sr_instance* sr)
 {
@@ -84,23 +98,21 @@ void sr_handlepacket(struct sr_instance* sr,
 
   /* fill in code here */
 
-  sr_ethernet_hdr_t *packet_header;
-  sr_ethertype arp_type = ethertype_arp;
-  sr_ethertype ip_type = ethertype_ip;
-  malloc (packet_header, sizeof(sr_ethernet_hdr_t));
-  memcpy(packet_header, (sr_ethernet_hdr_t *) packet, sizeof (sr_ethernet_hdr_t));
-  if (packet_header -> ether_type == ip_type) {
-    // Request
-    sr_arphandler (sr, pakcker, len, interface);
-
-    // Reply
-
-  } else if (packet_header -> ether_type == arp_type) {
-    sr_arphandler (sr, pakcker, len, interface);
+    /* Get Ethernet Header */
+  sr_ethernet_hdr_t *eth_hdr;
+  eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+  memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
 
 
+  uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
+  
+  if (ethtype == ethertype_ip){  
+    printf("Received the IP Packet!\n");
+    sr_handleip(sr, packet, len, interface);
+  } else if (ethtype == ethertype_arp){ 
+    printf("Received the ARP Packet!\n");
+    sr_handlearp(sr, packet, len, interface);
   }
-
 
 }/* end sr_ForwardPacket */
 
@@ -113,10 +125,10 @@ void sr_arphandler (struct sr_instance* sr,
   assert(packet);
   assert(interface);
 
-  sr_arp_hdr *arp_header; 
-  arp_header = malloc (sizeof (sr_arp_hdr));
-  memcpy (arp_header, (sr_arp_hdr_t *) (packet + size (sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
-  if (ntohs(arp_header -> ar_op) == arp_op_request) {
+  sr_arp_hdr_t *arp_hdr; 
+  arp_hdr = malloc (sizeof (sr_arp_hdr_t));
+  memcpy (arp_hdr, (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
+  if (ntohs(arp_hdr->ar_op) == arp_op_request) {
     // Check if the packet's targer is current router
     if (check_receiver()) {
       int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)
@@ -128,7 +140,7 @@ void sr_arphandler (struct sr_instance* sr,
       printf ("Dropping packet: ARP request is not targeted at current router.");
       return; 
     }
-  } else if (ntohs(arp_header -> ar_op) == arp_reply) {
+  } else if (ntohs(arp_hdr -> ar_op) == arp_reply) {
     if (check_receiver()) {
        struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
         sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
@@ -155,9 +167,9 @@ void sr_arphandler (struct sr_instance* sr,
 
 
 void sr_iphandler (struct sr_instance* sr,
-        uint8_t * packet lent ,
+        uint8_t * packet,
         unsigned int len,
-        char* interface/* lent */) 
+        char* interface) 
 {
 
 }
@@ -191,7 +203,7 @@ uint8_t* create_reply_packet (uint8_t *packet, struct sr_if *if_walker, int pack
   return reply_packet;
 }
 
-int check_receiver (struct sr_arp_hdr_t* arp_header, struct sr_instance* sr) {
+int check_receiver (struct sr_arp_hdr_t* arp_hdr, struct sr_instance* sr) {
   int correct_router = 0;
   if_walker = sr->if_list;
   while(if_walker){
