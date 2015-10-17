@@ -104,14 +104,11 @@ void sr_handlepacket(struct sr_instance* sr,
 
 
   uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
-  enum sr_ethertype type_ip = ethertype_ip;
-  enum sr_ethertype type_arp = ethertype_arp;
-
   
-  if (ethtype == type_ip){  
+  if (ethtype == ethertype_ip){
     printf("Received the IP Packet!\n");
     sr_iphandler(sr, packet, len, interface);
-  } else if (ethtype == type_arp){ 
+  } else if (ethtype == ethertype_arp){
     printf("Received the ARP Packet!\n");
     sr_arphandler(sr, packet, len, interface);
   }
@@ -131,12 +128,12 @@ void sr_arphandler (struct sr_instance* sr,
   arp_hdr = malloc (sizeof (sr_arp_hdr_t));
   memcpy (arp_hdr, (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
   if (ntohs(arp_hdr->ar_op) == arp_op_request) {
-    /* Check if the packet's targer is current router */
+    /* Check if the packet's target is current router */
     if (check_receiver(arp_hdr, sr)) {
       if_walker = sr->if_list;
       int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
       /* Create reply packet to send back to sender */
-      uint8_t *reply_packet = create_reply_packet (packet, if_walker, packet_len, arp_hdr); 
+      uint8_t *reply_packet = create_reply_packet(packet, if_walker, packet_len, arp_hdr);
       sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
       free(reply_packet);
     } else {
