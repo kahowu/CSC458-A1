@@ -29,6 +29,7 @@
 
 #define INIT_TTL 255
 #define PACKET_DUMP_SIZE 1024
+#define ICMP_ECHO_REQUEST 0
 
 /* forward declare */
 struct sr_if;
