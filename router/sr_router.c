@@ -32,7 +32,7 @@
  *
  *---------------------------------------------------------------------*/
 
-struct sr_if *if_walker;
+struct sr_if *if_walker = 0;
 uint8_t* create_reply_packet (uint8_t * packet, struct sr_if * if_walker, int packet_len, sr_arp_hdr_t* arp_hdr);
 int check_receiver (sr_arp_hdr_t* arp_hdr, struct sr_instance* sr);
 void sr_arphandler (struct sr_instance* sr,
@@ -133,7 +133,7 @@ void sr_arphandler (struct sr_instance* sr,
   if (ntohs(arp_hdr->ar_op) == arp_op_request) {
     /* Check if the packet's targer is current router */
     if (check_receiver(arp_hdr, sr)) {
-      if_walker = 0;
+      if_walker = sr->if_list;
       int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
       /* Create reply packet to send back to sender */
       uint8_t *reply_packet = create_reply_packet (packet, if_walker, packet_len, arp_hdr); 
@@ -144,7 +144,7 @@ void sr_arphandler (struct sr_instance* sr,
       return; 
     }
   } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
-    if_walker = 0;
+    if_walker = sr->if_list;
     if (check_receiver(arp_hdr, sr)) {
        struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
         sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
