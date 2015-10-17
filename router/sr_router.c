@@ -135,6 +135,7 @@ void sr_arphandler (struct sr_instance* sr,
       /* Create reply packet to send back to sender */
       uint8_t *reply_packet = create_reply_packet(packet, if_walker, packet_len, arp_hdr);
       sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
+      printf("Sent an ARP reply packet\n");
       free(reply_packet);
     } else {
       printf ("Dropping packet: ARP request is not targeted at current router.");
