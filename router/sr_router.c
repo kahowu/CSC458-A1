@@ -173,6 +173,71 @@ void sr_iphandler (struct sr_instance* sr,
         unsigned int len,
         char* interface) 
 {
+  assert(sr);
+  assert(packet);
+  assert(interface);
+  sr_ip_hdr_t *ip_hdr;
+  ip_hdr = malloc (sizeof(sr_ip_hdr_t));
+  memcpy (ip_hdr, (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
+  /* It is for me */
+  if (check_receiver(ip_hdr->ip_dst, sr)) { 
+    uint8_t ip_p = ip_protocol(ip_hdr); 
+    if (ip_p == ip_protocol_icmp) {
+      sr_icmp_hdr *icmp_hdr;
+      icmp_hdr = malloc (sizeof(sr_icmp_hdr));
+      memcpy (icmp_hdr, (*sr_icmp_hdr) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), sizeof(sr_icmp_hdr));
+      /* If it's ICMP echo req, send echo reply */
+      if (icmp_hdr->ip_p == ICMP_ECHO_REQUEST) {
+        int len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr);
+        uint8_t *echo_reply = malloc(len);
+
+        sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+        memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
+
+        /* Create ethernet header */
+        sr_ethernet_hdr_t *echo_reply_hdr = (sr_ethernet_hdr_t *) echo_reply;
+        memcpy(echo_reply_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+        memcpy(echo_reply_hdr ->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+        echo_reply_hdr->ether_type = eth_hdr->ether_type;
+
+        /* Create IP header */
+        
+
+
+
+
+
+      } else {
+        printf ("Not an ICMP echo request!");
+      }
+    else if (icmp_hdr->ip_r == ip_protocol_udp || ip_protocol_tcp) {
+
+
+    }
+
+
+
+    /* If it is TCP / UDP, send ICMP port unreachable */
+
+  } else {
+    /* check routing table, and perform LPM */ 
+
+    /* If there is no match, send ICMP net unreachable */
+
+    /* If there is a match, check ARP cache */
+
+    /* If there is no match in our ARP cache, send ARP request. */
+
+    /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
+
+    /* If there is a match in our ARP cache, send frame to next hop */
+
+
+
+  }
+
+
+
 
 }
 
@@ -205,12 +270,12 @@ uint8_t* create_reply_packet (uint8_t* packet, struct sr_if* if_walker, int pack
   return reply_packet;
 }
 
-int check_receiver (sr_arp_hdr_t *arp_hdr, struct sr_instance* sr) {
+int check_receiver (uint32_t ip, struct sr_instance* sr) {
   int correct_router = 0;
-  if_walker = sr->if_list;
+  // if_walker = sr->if_list;
   while (if_walker){
-    /* Check if the interface IP matches the receiving router's id */
-    if(if_walker->ip == arp_hdr->ar_tip){
+    /* Check if the interface IP matches the receiving router's IP */
+    if(if_walker->ip == ip){
       /* The packet is targeted towards the current router */
       correct_router = 1;
       break;
