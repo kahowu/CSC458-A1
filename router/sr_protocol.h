@@ -45,8 +45,6 @@
 #define IP_MAXPACKET 65535
 #endif
 
-
-
 /* FIXME
  * ohh how lame .. how very, very lame... how can I ever go out in public
  * again?! /mc
@@ -152,6 +150,8 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
+  ip_protocol_udp = 0x11,
+  ip_protocol_tcp = 0x06,
 };
 
 enum sr_ethertype {
@@ -169,6 +169,33 @@ enum sr_arp_hrd_fmt {
   arp_hrd_ethernet = 0x0001,
 };
 
+enum time_exceeded {
+  time_exceeded_type = 11,
+  time_exceeded_code = 0,
+};
+
+enum port_unreachable {
+  port_unreachable_type = 3,
+  port_unreachable_code = 3,
+};
+
+enum dest_host_unreachable {
+  dest_host_unreachable_type = 3,
+  dest_host_unreachable_code = 1,
+};
+
+enum dest_net_unreachable {
+  dest_net_unreachable_type = 3,
+  dest_net_unreachable_code = 0,
+};
+
+enum echo_reply {
+  echo_reply_type = 0,
+};
+
+enum echo_request {
+  icmp_echo_request = 0,
+};
 
 struct sr_arp_hdr
 {
