@@ -129,7 +129,7 @@ void sr_arphandler (struct sr_instance* sr,
   memcpy (arp_hdr, (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
   if (ntohs(arp_hdr->ar_op) == arp_op_request) {
     /* Check if the packet's target is current router */
-    if (check_receiver(arp_hdr, sr)) {
+    if (check_receiver(arp_hdr->tip, sr)) {
       if_walker = sr->if_list;
       int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
       /* Create reply packet to send back to sender */
@@ -143,7 +143,7 @@ void sr_arphandler (struct sr_instance* sr,
     }
   } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
     if_walker = sr->if_list;
-    if (check_receiver(arp_hdr, sr)) {
+    if (check_receiver(arp_hdr->tip, sr)) {
        struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
         sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
         memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
@@ -155,12 +155,11 @@ void sr_arphandler (struct sr_instance* sr,
             memcpy(reply_eth_hdr->ether_dhost, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
             memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
             reply_eth_hdr->ether_type = eth_hdr->ether_type;
-
-            
             sr_send_packet(sr, packet->buf, packet->len, packet->iface);
           }
           packet = packet->next;
       }
+
     } else {
       printf ("Dropping packet: ARP request is not targeted at current router.");
     }
@@ -188,36 +187,43 @@ void sr_iphandler (struct sr_instance* sr,
       memcpy (icmp_hdr, (*sr_icmp_hdr) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), sizeof(sr_icmp_hdr));
       /* If it's ICMP echo req, send echo reply */
       if (icmp_hdr->ip_p == ICMP_ECHO_REQUEST) {
-        int len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr);
-        uint8_t *echo_reply = malloc(len);
+        int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr);
+        uint8_t *reply_packet = malloc(packet_len);
 
         sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
         memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
 
         /* Create ethernet header */
-        sr_ethernet_hdr_t *echo_reply_hdr = (sr_ethernet_hdr_t *) echo_reply;
-        memcpy(echo_reply_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
-        memcpy(echo_reply_hdr ->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
-        echo_reply_hdr->ether_type = eth_hdr->ether_type;
+        sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) reply_packet;
+        memcpy(reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+        memcpy(reply_eth_hdr ->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+        reply_eth_hdr->ether_type = eth_hdr->ether_type;
 
         /* Create IP header */
-        
+        sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
+        memcpy(reply_ip_hdr, ip_hdr, sizeof(sr_ip_hdr_t));x
+        reply_ip_hdr->ip_src = ip_hdr->ip_dst;
+        reply_ip_hdr->ip_dst = ip_hdr->ip_src;
 
-
-
+  
+        /* Create ICMP Header */
+        sr_icmp_hdr_t *reply_icmp_hdr = (sr_icmp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        reply_icmp_hdr->icmp_type = ICMP_ECHO_REQUEST;
+        reply_icmp_hdr->icmp_code = 0;
+        // reply_icmp_hdr->icmp_sum = ?;
 
 
       } else {
         printf ("Not an ICMP echo request!");
       }
-    else if (icmp_hdr->ip_r == ip_protocol_udp || ip_protocol_tcp) {
+    /* If it is TCP / UDP, send ICMP port unreachable */
+    } else if (icmp_hdr->ip_r == ip_protocol_udp || ip_protocol_tcp) {
 
 
     }
 
 
 
-    /* If it is TCP / UDP, send ICMP port unreachable */
 
   } else {
     /* check routing table, and perform LPM */ 
@@ -272,7 +278,6 @@ uint8_t* create_reply_packet (uint8_t* packet, struct sr_if* if_walker, int pack
 
 int check_receiver (uint32_t ip, struct sr_instance* sr) {
   int correct_router = 0;
-  // if_walker = sr->if_list;
   while (if_walker){
     /* Check if the interface IP matches the receiving router's IP */
     if(if_walker->ip == ip){
