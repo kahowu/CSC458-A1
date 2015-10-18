@@ -18,6 +18,48 @@
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
     /* Fill this in */
+    struct sr_arpcache *sr_cache = &sr->cache;
+
+
+    struct sr_arpreq *sr_requests = sr_cache->requests;
+
+    while (sr_requests) {
+        struct sr_arpreq *following_requests = sr_requests->next;
+        time_t curr_time;
+        time(&curr_time);
+        double one_sec = 1.0;
+        if (difftime(curr_time, sr_requests->sent) >  one_sec){
+            if ((sr_requests->times_sent) >= 5) {
+                struct sr_packet *packet = sr_requests->packets; 
+                while (packet) {
+                    uint8_t *buf = packet->buf;
+                    sr_ip_hdr_t *ip_hdr;
+                    ip_hdr = malloc (sizeof(sr_ip_hdr_t));
+                    memcpy (ip_hdr, (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
+                    struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
+                    int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
+                    uint8_t *host_unreachable_reply = create_icmp_reply (buf, if_walker, packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
+                    sr_send_packet (sr, host_unreachable_reply, packet_len, if_walker->name); 
+                    free (host_unreachable_reply);  
+                    
+                    packet = packet->next;
+                }
+                sr_arpreq_destroy(sr_cache, sr_requests); 
+            }
+        } else {
+            /* Send arp request */
+            struct sr_packet *packet = sr_requests->packets;
+            struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
+            while (packet) {
+                sr_send_packet(sr, packet->buf, packet->len, if_walker->name);
+                packet = packet->next;
+            }
+
+            sr_requests->sent = curr_time;
+            sr_requests->times_sent = sr_requests->times_sent + 1;
+        }
+        sr_requests = following_requests;
+    }
 }
 
 /* You should not need to touch the rest of this code. */
@@ -84,7 +126,7 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
         new_pkt->buf = (uint8_t *)malloc(packet_len);
         memcpy(new_pkt->buf, packet, packet_len);
         new_pkt->len = packet_len;
-		new_pkt->iface = (char *)malloc(sr_IFACE_NAMELEN);
+        new_pkt->iface = (char *)malloc(sr_IFACE_NAMELEN);
         strncpy(new_pkt->iface, iface, sr_IFACE_NAMELEN);
         new_pkt->next = req->packets;
         req->packets = new_pkt;

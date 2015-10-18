@@ -32,14 +32,8 @@
  *
  *---------------------------------------------------------------------*/
 
-struct sr_if *if_walker = 0;
-uint8_t* create_arp_reply (uint8_t * packet, struct sr_if * if_walker, int packet_len, sr_arp_hdr_t* arp_hdr);
-uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_ip_hdr_t *ip_hdr, uint8_t type, unsigned int code);
-int check_receiver (uint32_t ip, struct sr_instance* sr);
-void sr_arphandler (struct sr_instance* sr, uint8_t * packet/* lent */, unsigned int len, char* interface/* lent */);
-void sr_iphandler (struct sr_instance* sr, uint8_t * packet/* lent */, unsigned int len, char* interface/* lent */);
-void create_ethernet_header (uint8_t * reply_packet, uint8_t * packet, struct sr_if * if_walker);
 
+struct sr_if *if_walker;
 
 void sr_init(struct sr_instance* sr)
 {
@@ -125,7 +119,6 @@ void sr_arphandler (struct sr_instance* sr,
   if (ntohs(arp_hdr->ar_op) == arp_op_request) {
     /* Check if the packet's target is current router */
     if (check_receiver(arp_hdr->ar_tip, sr)) {
-      if_walker = sr->if_list;
       int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
       /* Create reply packet to send back to sender */
       uint8_t *reply_packet = create_arp_reply(packet, if_walker, packet_len, arp_hdr);
@@ -137,8 +130,6 @@ void sr_arphandler (struct sr_instance* sr,
       return; 
     }
   } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
-    if_walker = sr->if_list;
-
     /*  only send an ARP reply if the target IP address is one of your router’s IP addresses.
         In the case of an ARP reply, you should only cache the entry if the target 
         IP address is one of your router’s IP addresses. */ 
@@ -154,9 +145,9 @@ void sr_arphandler (struct sr_instance* sr,
             memcpy(reply_eth_hdr->ether_dhost, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
             memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
             reply_eth_hdr->ether_type = eth_hdr->ether_type;
-            sr_send_packet(sr, packet->buf, packet->len, packet->iface);
+            sr_send_packet(sr, packet->buf, packet->len, if_walker->name);
+            packet = packet -> next;
           }
-          packet = packet->next;
       }
 
     } else {
@@ -266,6 +257,7 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
 
 
 int check_receiver (uint32_t ip, struct sr_instance* sr) {
+  if_walker = sr->if_list;
   int correct_router = 0;
   while (if_walker){
     /* Check if the interface IP matches the receiving router's IP */
