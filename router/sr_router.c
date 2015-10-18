@@ -116,24 +116,21 @@ void sr_arphandler (struct sr_instance* sr,
     sr_arp_hdr_t *arp_hdr; 
     arp_hdr = malloc (sizeof (sr_arp_hdr_t));
     memcpy (arp_hdr, (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
-    if (ntohs(arp_hdr->ar_op) == arp_op_request) {
-        /* Check if the packet's target is current router */
-        if (check_receiver(arp_hdr->ar_tip, sr)) {
-          int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-          /* Create reply packet to send back to sender */
-          uint8_t *reply_packet = create_arp_reply(packet, if_walker, packet_len, arp_hdr);
-          sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
-          printf("Sent an ARP reply packet\n");
-          free(reply_packet);
-        } else {
-          printf ("Dropping packet: ARP request is not targeted at current router.");
-          return; 
-        }
-    } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
+    struct sr_if *if_walker = sr_get_interface_ip(arp_hdr->ar_tip, sr);
+    if (if_walker) {
+        if (ntohs(arp_hdr->ar_op) == arp_op_request) {
+            /* Check if the packet's target is current router */
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            /* Create reply packet to send back to sender */
+            uint8_t *reply_packet = create_arp_reply(packet, if_walker, packet_len, arp_hdr);
+            sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
+            printf("Sent an ARP reply packet\n");
+            free(reply_packet);
+    
+        } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
         /*  only send an ARP reply if the target IP address is one of your router’s IP addresses.
             In the case of an ARP reply, you should only cache the entry if the target 
-            IP address is one of your router’s IP addresses. */ 
-        if (check_receiver(arp_hdr->ar_tip, sr)) {
+            IP address is one of your router’s IP addresses. */
             struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
             sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
             memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
@@ -149,9 +146,10 @@ void sr_arphandler (struct sr_instance* sr,
                     packet = packet -> next;
                 }
             }
-        } else {
-          printf ("Dropping packet: ARP request is not targeted at current router.");
         }
+    } else {
+        printf ("Dropping packet: ARP request is not targeted at current router.");
+        return; 
     }
 }
 
@@ -168,7 +166,9 @@ void sr_iphandler (struct sr_instance* sr,
     ip_hdr = malloc (sizeof(sr_ip_hdr_t));
     memcpy (ip_hdr, (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
     /* It is for me */
-    if (check_receiver(ip_hdr->ip_dst, sr)) { 
+    struct sr_if *if_walker = sr_get_interface_ip(ip_hdr->ip_dst, sr); 
+
+    if (if_walker) {
         uint8_t ip_p = ip_protocol((uint8_t *)ip_hdr); 
         if (ip_p == ip_protocol_icmp) {
             sr_icmp_hdr_t *icmp_hdr;
@@ -190,18 +190,49 @@ void sr_iphandler (struct sr_instance* sr,
             sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
             free (port_unreachable_reply);   
         }
+    /* Not for me*/ 
     } else {
         /* check routing table, and perform LPM */ 
+        struct sr_rt* longest_prefix = routing_lpm (sr, ip_hdr->ip_dst); 
+        struct sr_arpcache *sr_cache = &sr->cache;
+
+        if (longest_prefix) {
+            /* If there is a match, check ARP cache */
+            struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache, ip_hdr->ip_dst); 
+            /* If there is a match in our ARP cache, send frame to next hop */
+            if (arp_entry){
+                int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
+                uint8_t *forward_packet = malloc(packet_len);
+
+                sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+                memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
+
+                /* Create ethernet header */
+                sr_ethernet_hdr_t *forward_eth_hdr = (sr_ethernet_hdr_t *) forward_packet;
+                memcpy(forward_eth_hdr->ether_dhost, arp_entry->mac, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(forward_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                forward_eth_hdr->ether_type = eth_hdr->ether_type;
+
+                /* Copy IP header */ 
+                sr_ip_hdr_t *forward_ip_hdr = (sr_ip_hdr_t *)(forward_packet + sizeof(sr_ethernet_hdr_t));
+                memcpy(forward_ip_hdr , ip_hdr, sizeof(sr_ip_hdr_t));
+
+                sr_send_packet (sr, forward_packet, packet_len, if_walker->name); 
+
+            } else {
+                /* If there is no match in our ARP cache, send ARP request. */
+                /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
+                sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, if_walker->name);
+                sr_arpcache_sweepreqs(sr);
+            }
 
         /* If there is no match, send ICMP net unreachable */
-
-        /* If there is a match, check ARP cache */
-
-        /* If there is no match in our ARP cache, send ARP request. */
-
-        /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
-
-        /* If there is a match in our ARP cache, send frame to next hop */
+        } else {
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
+            uint8_t *port_unreachable_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code); 
+            sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
+            free (port_unreachable_reply);  
+        }
     }
 }
 
@@ -244,25 +275,6 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
     reply_icmp_hdr->icmp_sum = cksum (reply_icmp_hdr, ntohs(ip_hdr->ip_len) - ip_hdr->ip_hl * 4);
     return reply_packet;
 }
-
-
-int check_receiver (uint32_t ip, struct sr_instance* sr) {
-    if_walker = sr->if_list;
-    int correct_router = 0;
-    while (if_walker){
-        /* Check if the interface IP matches the receiving router's IP */
-        if (if_walker->ip == ip){
-            /* The packet is targeted towards the current router */
-            correct_router = 1;
-            break;
-        }
-        if_walker = if_walker->next;
-    }
-
-    return correct_router;
-}
-
-
 
 void create_ethernet_header (uint8_t * reply_packet, uint8_t * packet, struct sr_if * if_walker) {
     /* Copy over original ethernet header */
