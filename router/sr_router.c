@@ -174,6 +174,7 @@ void sr_iphandler (struct sr_instance* sr,
   assert(sr);
   assert(packet);
   assert(interface);
+  int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
   sr_ip_hdr_t *ip_hdr;
   ip_hdr = malloc (sizeof(sr_ip_hdr_t));
   memcpy (ip_hdr, (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
@@ -186,7 +187,6 @@ void sr_iphandler (struct sr_instance* sr,
       memcpy (icmp_hdr, (sr_icmp_hdr_t*) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), sizeof(sr_icmp_hdr_t));
       /* If it's ICMP echo req, send echo reply */
       if (icmp_hdr->icmp_type == icmp_echo_request) {
-        int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
         uint8_t *echo_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, echo_reply_type, -1); 
         sr_send_packet (sr, echo_reply, packet_len, if_walker->name); 
         free (echo_reply);
@@ -195,31 +195,44 @@ void sr_iphandler (struct sr_instance* sr,
       }
     /* If it is TCP / UDP, send ICMP port unreachable */
     } else if (ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp) {
-      int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
       uint8_t *port_unreachable_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, port_unreachable_type, port_unreachable_code); 
       sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
       free (port_unreachable_reply);   
     }
-    
-
-
-
 
   } else {
-    /* check routing table, and perform LPM */ 
+    struct sr_rt* rt_walker = 0;
+    if (sr->routing_table == 0) {
+        /* routing table is empty */
+    } else {
+        rt_walker = sr->routing_table;
+        int no_match = 0;
 
-    /* If there is no match, send ICMP net unreachable */
+        while (rt_walker->next) {
+            rt_walker = rt_walker->next;
+            /* check routing table here */
+        }
 
-    /* If there is a match, check ARP cache */
+        if (no_match == 0) {
+            /* If there is no match, send ICMP net unreachable */
+            uint8_t *net_unreachable_reply = create_icmp_reply(packet, if_walker, packet_len, ip_hdr, dest_net_unreachable_type, dest_net_unreachable_code); 
+            sr_send_packet(sr, port_unreachable_reply, packet_len, if_walker->name);
+            free (dest_net_unreachable_reply);
 
-    /* If there is no match in our ARP cache, send ARP request. */
+        } else {
+            /* If there is a match, check ARP cache */
+            uint32_t dummy = 0;
+            struct sr_arpentry entry = arpcache_lookup(&(sr->cache), dummy);
 
-    /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
+            if (entry) {
+                /* If there is a match in our ARP cache, send frame to next hop */
 
-    /* If there is a match in our ARP cache, send frame to next hop */
-
-
-
+            } else {
+                /* If there is no match in our ARP cache, send ARP request. */
+                /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
+            }
+        }
+    }
   }
 }
 
@@ -279,7 +292,6 @@ int check_receiver (uint32_t ip, struct sr_instance* sr) {
 
   return correct_router;
 }
-
 
 
 void create_ethernet_header (uint8_t * reply_packet, uint8_t * packet, struct sr_if * if_walker) {
