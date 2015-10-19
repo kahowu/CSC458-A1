@@ -197,10 +197,13 @@ void sr_iphandler (struct sr_instance* sr,
         struct sr_arpcache *sr_cache = &sr->cache;
 
         if (longest_prefix) {
+            printf("There is a LPM.\n");
+            if_walker = sr_get_interface(sr, longest_prefix->interface);
             /* If there is a match, check ARP cache */
             struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache, ip_hdr->ip_dst); 
             /* If there is a match in our ARP cache, send frame to next hop */
             if (arp_entry){
+                printf("There is a match in the ARP cache\n");
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
                 uint8_t *forward_packet = malloc(packet_len);
 
@@ -220,6 +223,7 @@ void sr_iphandler (struct sr_instance* sr,
                 sr_send_packet (sr, forward_packet, packet_len, if_walker->name); 
 
             } else {
+                printf("There is no match in our ARP cache\n");
                 /* If there is no match in our ARP cache, send ARP request. */
                 /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
                 sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, if_walker->name);
