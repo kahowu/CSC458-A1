@@ -10,6 +10,7 @@
 #include "sr_router.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 
 
 void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
@@ -20,6 +21,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
     if (difftime(curr_time, req->sent) >  one_sec){
         struct sr_packet *packet = req->packets; 
         if ((req->times_sent) >= 5) {
+            printf("Packet sent more than 5 times\n");
             while (packet) {
                 struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
                 uint8_t *buf = packet->buf;
@@ -34,6 +36,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             }
             sr_arpreq_destroy(sr_cache, req); 
         } else {
+            printf("Packet not sent more than 5 times\n");
             while (packet) {
                 struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
                 uint8_t *buf = packet->buf;
@@ -43,7 +46,16 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
 
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
                 uint8_t *request_packet = malloc(packet_len);
-                create_ethernet_header (request_packet, buf, if_walker); 
+
+                /* Copy over original ethernet header */
+                sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+                memcpy(eth_hdr, (sr_ethernet_hdr_t *) buf, sizeof(sr_ethernet_hdr_t));
+
+                /* Create ethernet header */
+                sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) request_packet;
+                memset(reply_eth_hdr->ether_dhost, 255, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                reply_eth_hdr->ether_type = eth_hdr->ether_type;
 
                 sr_arp_hdr_t *arp_req_hdr = (sr_arp_hdr_t *)(request_packet + sizeof(sr_ethernet_hdr_t));
                 arp_req_hdr->ar_hrd = arp_hdr->ar_hrd;
@@ -54,8 +66,11 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
 
                 memcpy(arp_req_hdr->ar_sha, if_walker->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
                 arp_req_hdr->ar_sip =  arp_hdr->ar_tip;
-                memcpy(arp_req_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
+                memset(arp_req_hdr->ar_tha, 0, sizeof(unsigned char)*ETHER_ADDR_LEN);
                 arp_req_hdr->ar_tip = arp_hdr->ar_sip;
+
+                printf("Sending packet\n");
+                print_hdrs(request_packet, packet_len);
 
                 sr_send_packet(sr, request_packet, packet_len, if_walker->name);
                 packet = packet->next;

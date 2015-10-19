@@ -226,8 +226,8 @@ void sr_iphandler (struct sr_instance* sr,
                 printf("There is no match in our ARP cache\n");
                 /* If there is no match in our ARP cache, send ARP request. */
                 /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
-                sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, if_walker->name);
-                sr_arpcache_sweepreqs(sr);
+                struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, if_walker->name);
+                handle_arpreq(req, sr);
             }
 
         /* If there is no match, send ICMP net unreachable */
