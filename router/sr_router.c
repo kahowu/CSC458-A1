@@ -251,10 +251,59 @@ void sr_iphandler (struct sr_instance* sr,
         /* If it is TCP / UDP, send ICMP port unreachable */
         } else if (ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp) {
             printf ("TCP / UDP packet. Port unreachable \n");
-            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-            uint8_t *port_unreachable_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, port_unreachable_type, port_unreachable_code); 
-            sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
-            free (port_unreachable_reply);  
+
+            int packet_len  = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+            uint8_t *reply_packet = malloc(packet_len);
+ 
+            sr_icmp_t3_hdr_t *icmp_hdr = (sr_icmp_t3_hdr_t *) malloc(sizeof(sr_icmp_t3_hdr_t));
+ 
+            if (!icmp_hdr) {
+                perror("malloc failed");
+                return;
+            }
+ 
+            int ip_len = sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+ 
+            /* Copy over original ethernet header */
+            sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+            memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
+ 
+            /* Create ethernet header */
+            sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) reply_packet;
+            memcpy(reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+            memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+            reply_eth_hdr->ether_type = eth_hdr->ether_type;
+ 
+            /* Create IP header */
+            sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
+            reply_ip_hdr->ip_v = 4;
+            reply_ip_hdr->ip_hl = 5;
+            reply_ip_hdr->ip_tos = 0;
+            reply_ip_hdr->ip_len = htons(ip_len);
+            reply_ip_hdr->ip_id = htons(0);
+            reply_ip_hdr->ip_off = htons(0);
+            reply_ip_hdr->ip_ttl = INIT_TTL;
+            reply_ip_hdr->ip_p = ip_protocol_icmp;
+            reply_ip_hdr->ip_src = htonl(ip_hdr->ip_dst);
+            reply_ip_hdr->ip_dst = htonl(ip_hdr->ip_src);
+ 
+            memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
+            uint16_t ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+            reply_ip_hdr->ip_sum = ck_sum;
+ 
+            /* Create ICMP Header */
+            sr_icmp_t3_hdr_t * reply_icmp_hdr = (sr_icmp_t3_hdr_t*)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+            reply_icmp_hdr->icmp_type = port_unreachable_type;
+            reply_icmp_hdr->icmp_code = port_unreachable_code;
+ 
+            memset(&(reply_icmp_hdr->icmp_sum), 0, sizeof(uint16_t));
+            uint16_t reply_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
+            reply_icmp_hdr->icmp_sum = reply_ck_sum;
+ 
+            sr_send_packet (sr, reply_packet, packet_len, if_walker->name);
+ 
+            free (reply_packet);
+
             return; 
         }
     /* Not for me*/ 
