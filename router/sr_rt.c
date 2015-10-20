@@ -37,7 +37,7 @@ struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst) {
     int len = 0; 
 
     struct sr_rt* rt_walker = 0;
-    struct sr_rt* longest_prefix;
+    struct sr_rt* longest_prefix = 0;
 
 
     rt_walker = routing_table;
