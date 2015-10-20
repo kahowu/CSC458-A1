@@ -195,7 +195,7 @@ enum echo_reply {
 };
 
 enum echo_request {
-  icmp_echo_request = 0,
+  icmp_echo_request = 8,
 };
 
 struct sr_arp_hdr

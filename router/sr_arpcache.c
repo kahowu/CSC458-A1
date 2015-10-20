@@ -23,16 +23,27 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
         if ((req->times_sent) >= 5) {
             printf("Packet sent more than 5 times\n");
             while (packet) {
-                struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
+                /* struct sr_if *if_walker = sr_get_interface (sr, packet->iface); */
                 uint8_t *buf = packet->buf;
 
                 sr_ip_hdr_t *ip_hdr;
                 ip_hdr = malloc (sizeof(sr_ip_hdr_t));
                 memcpy (ip_hdr, (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
                 
+                /* Decrement TTL */
+                ip_hdr->ip_ttl = ip_hdr->ip_ttl - 1;
+                if (ip_hdr->ip_ttl == 0){
+                    fprintf(stdout, "IP TTL is now 0. Discarding the packet\n");
+                    return;
+                } else {
+                    ip_hdr->ip_sum = 0;
+                    ip_hdr->ip_sum = cksum(ip_hdr, ip_hdr->ip_hl * 4);
+                }
+
+
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-                uint8_t *host_unreachable_reply = create_icmp_reply (buf, if_walker, packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
-                sr_send_packet (sr, host_unreachable_reply, packet_len, if_walker->name); 
+                uint8_t *host_unreachable_reply = create_icmp_reply (buf, sr_get_interface(sr, packet->iface), packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
+                sr_send_packet (sr, host_unreachable_reply, packet_len,  packet->iface); 
                 free (host_unreachable_reply);  
                 packet = packet->next;
             }
@@ -42,11 +53,6 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
 
             struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
             uint8_t *buf = packet->buf;
-
-
-            sr_arp_hdr_t *arp_hdr; 
-            arp_hdr = malloc (sizeof (sr_arp_hdr_t));
-            memcpy (arp_hdr, (sr_arp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
 
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
             uint8_t *request_packet = malloc(packet_len);
@@ -78,12 +84,12 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             print_hdrs(request_packet, packet_len);
 
             sr_send_packet(sr, request_packet, packet_len, if_walker->name);
+            free (request_packet);
         }
 
             req->sent = curr_time;
             req->times_sent = req->times_sent + 1;
-    }
-    
+    }   
 }
 
 
