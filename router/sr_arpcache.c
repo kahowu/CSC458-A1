@@ -25,9 +25,11 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             while (packet) {
                 struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
                 uint8_t *buf = packet->buf;
+
                 sr_ip_hdr_t *ip_hdr;
                 ip_hdr = malloc (sizeof(sr_ip_hdr_t));
                 memcpy (ip_hdr, (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
+                
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
                 uint8_t *host_unreachable_reply = create_icmp_reply (buf, if_walker, packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
                 sr_send_packet (sr, host_unreachable_reply, packet_len, if_walker->name); 
@@ -37,50 +39,51 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             sr_arpreq_destroy(sr_cache, req); 
         } else {
             printf("Packet not sent more than 5 times\n");
-            while (packet) {
-                struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
-                uint8_t *buf = packet->buf;
-                sr_arp_hdr_t *arp_hdr; 
-                arp_hdr = malloc (sizeof (sr_arp_hdr_t));
-                memcpy (arp_hdr, (sr_arp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
 
-                int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-                uint8_t *request_packet = malloc(packet_len);
+            struct sr_if *if_walker = sr_get_interface (sr, packet->iface);
+            uint8_t *buf = packet->buf;
 
-                /* Copy over original ethernet header */
-                sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
-                memcpy(eth_hdr, (sr_ethernet_hdr_t *) buf, sizeof(sr_ethernet_hdr_t));
 
-                /* Create ethernet header */
-                sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) request_packet;
-                memset(reply_eth_hdr->ether_dhost, 255, sizeof(uint8_t)*ETHER_ADDR_LEN);
-                memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
-                reply_eth_hdr->ether_type = eth_hdr->ether_type;
+            sr_arp_hdr_t *arp_hdr; 
+            arp_hdr = malloc (sizeof (sr_arp_hdr_t));
+            memcpy (arp_hdr, (sr_arp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
 
-                sr_arp_hdr_t *arp_req_hdr = (sr_arp_hdr_t *)(request_packet + sizeof(sr_ethernet_hdr_t));
-                arp_req_hdr->ar_hrd = arp_hdr->ar_hrd;
-                arp_req_hdr->ar_pro = arp_hdr->ar_pro;
-                arp_req_hdr->ar_hln = arp_hdr->ar_hln;
-                arp_req_hdr->ar_pln = arp_hdr->ar_pln;
-                arp_req_hdr->ar_op =  htons(arp_op_request);
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            uint8_t *request_packet = malloc(packet_len);
 
-                memcpy(arp_req_hdr->ar_sha, if_walker->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
-                arp_req_hdr->ar_sip =  arp_hdr->ar_tip;
-                memset(arp_req_hdr->ar_tha, 0, sizeof(unsigned char)*ETHER_ADDR_LEN);
-                arp_req_hdr->ar_tip = arp_hdr->ar_sip;
+            /* Copy over original ethernet header */
+            sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+            memcpy(eth_hdr, (sr_ethernet_hdr_t *) buf, sizeof(sr_ethernet_hdr_t));
 
-                printf("Sending packet\n");
-                print_hdrs(request_packet, packet_len);
+            /* Create ethernet header */
+            sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) request_packet;
+            memset(reply_eth_hdr->ether_dhost, 255, sizeof(uint8_t)*ETHER_ADDR_LEN);
+            memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+            reply_eth_hdr->ether_type = eth_hdr->ether_type;
 
-                sr_send_packet(sr, request_packet, packet_len, if_walker->name);
-                packet = packet->next;
-            }
+            /* Make ARP header */
+            sr_arp_hdr_t *arp_req_hdr = (sr_arp_hdr_t *)(request_packet+ sizeof(sr_ethernet_hdr_t));
+            arp_req_hdr->ar_hrd = htons(arp_hrd_ethernet);
+            arp_req_hdr->ar_pro = htons(ethertype_ip);
+            arp_req_hdr->ar_hln = ETHER_ADDR_LEN;
+            arp_req_hdr->ar_pln = sizeof(uint32_t);
+            arp_req_hdr->ar_op = htons(arp_op_request);
+
+            memcpy(arp_req_hdr->ar_sha, if_walker->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
+            arp_req_hdr->ar_sip =   if_walker->ip;
+            memset(arp_req_hdr->ar_tha, 0, sizeof(unsigned char)*ETHER_ADDR_LEN);
+            arp_req_hdr->ar_tip = req->ip;
+
+            printf("Sending packet\n");
+            print_hdrs(request_packet, packet_len);
+
+            sr_send_packet(sr, request_packet, packet_len, if_walker->name);
+        }
 
             req->sent = curr_time;
             req->times_sent = req->times_sent + 1;
-
-        }
     }
+    
 }
 
 
