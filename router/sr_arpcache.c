@@ -65,7 +65,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) request_packet;
             memset(reply_eth_hdr->ether_dhost, 255, sizeof(uint8_t)*ETHER_ADDR_LEN);
             memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
-            reply_eth_hdr->ether_type = eth_hdr->ether_type;
+            reply_eth_hdr->ether_type = htons(ethertype_arp);
 
             /* Make ARP header */
             sr_arp_hdr_t *arp_req_hdr = (sr_arp_hdr_t *)(request_packet+ sizeof(sr_ethernet_hdr_t));
