@@ -75,7 +75,7 @@ void sr_set_ether_addr(struct sr_instance* , const unsigned char* );
 void sr_print_if_list(struct sr_instance* );
 
 /* -- sr_router.c -- */
-uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, struct sr_if* src_iface, int packet_len, sr_arp_hdr_t* arp_hdr);
+uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_arp_hdr_t* arp_hdr, struct sr_instance *sr, char* interface);
 uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_ip_hdr_t *ip_hdr, uint8_t type, unsigned int code);
 int check_receiver (uint32_t ip, struct sr_instance* sr);
 void sr_arphandler (struct sr_instance* sr, uint8_t * packet/* lent */, unsigned int len, char* interface/* lent */);

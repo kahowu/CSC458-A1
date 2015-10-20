@@ -75,7 +75,7 @@ struct sr_if* sr_get_interface_ip(uint32_t ip, struct sr_instance* sr) {
         if_walker = if_walker->next;
     }
 
-    return 0;
+    return NULL;
 } /* -- sr_get_interface_ip -- */
 
 
