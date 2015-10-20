@@ -96,15 +96,12 @@ void sr_handlepacket(struct sr_instance* sr,
 
     uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
 
-    switch (ethtype) 
-    {
-        case ethertype_ip:
-            sr_iphandler(sr, packet, len, interface);
-        case ethertype_arp:
-            sr_arphandler(sr, packet, len, interface);
-        default:
-            printf("Only handle IP and ARP protocols.");
-
+    if (ethtype == ethertype_ip){ /* IP */    
+        printf("Received the IP Packet!\n");
+        sr_iphandler(sr, packet, len, interface);
+    } else if (ethtype == ethertype_arp){ /* ARP */
+        printf("Received the ARP Packet!\n");
+        sr_arphandler(sr, packet, len, interface);
     }
 
 } /* end sr_ForwardPacket */
