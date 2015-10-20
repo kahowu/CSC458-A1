@@ -26,7 +26,7 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
                     ip_hdr = malloc (sizeof(sr_ip_hdr_t));
                     memcpy (ip_hdr, (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
                     int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-                    uint8_t *host_unreachable_reply = create_icmp_reply (buf, if_walker, packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
+                    uint8_t *host_unreachable_reply = create_icmp_packet (buf, if_walker, packet_len, ip_hdr, dest_host_unreachable_type, dest_host_unreachable_code);
                     sr_send_packet (sr, host_unreachable_reply, packet_len, if_walker->name); 
                     free (host_unreachable_reply);  
                     

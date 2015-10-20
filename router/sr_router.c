@@ -77,32 +77,37 @@ void sr_handlepacket(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-  /* REQUIRES */
-  assert(sr);
-  assert(packet);
-  assert(interface);
-
-  printf("*** -> Received packet of length %d \n",len);
-
-  /* fill in code here */
+    /* REQUIRES */
+    assert(sr);
+    assert(packet);
+    assert(interface);
 
     /* Get Ethernet Header */
-  sr_ethernet_hdr_t *eth_hdr;
-  eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
-  memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
+    sr_ethernet_hdr_t *eth_hdr;
+    eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+    memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
 
+    /* Check for mininum length requirement */
+    int min_len = sizeof (sr_ethernet_hdr_t);
+    if (len < min_len) {
+        fprintf(stderr, "The ethernet header does not satisfy mininum length");
+        return;
+    }
 
-  uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
-  
-  if (ethtype == ethertype_ip){
-    printf("Received the IP Packet!\n");
-    sr_iphandler(sr, packet, len, interface);
-  } else if (ethtype == ethertype_arp){
-    printf("Received the ARP Packet!\n");
-    sr_arphandler(sr, packet, len, interface);
-  }
+    uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
 
-}/* end sr_ForwardPacket */
+    switch (ethtype) 
+    {
+        case ethertype_ip:
+            sr_iphandler(sr, packet, len, interface);
+        case ethertype_arp:
+            sr_arphandler(sr, packet, len, interface);
+        default:
+            printf("Only handle IP and ARP protocols.");
+
+    }
+
+} /* end sr_ForwardPacket */
 
 void sr_arphandler (struct sr_instance* sr,
         uint8_t * packet/* lent */,
@@ -116,16 +121,25 @@ void sr_arphandler (struct sr_instance* sr,
     sr_arp_hdr_t *arp_hdr; 
     arp_hdr = malloc (sizeof (sr_arp_hdr_t));
     memcpy (arp_hdr, (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_arp_hdr_t));
+
+    /* Check for mininum length requirement */
+    int min_len = sizeof (sr_ethernet_hdr_t) + + sizeof(sr_arp_hdr_t);
+    if (len < min_len) {
+        fprintf(stderr, "The ethernet header does not satisfy mininum length");
+        return;
+    }
+
     struct sr_if *if_walker = sr_get_interface_ip(arp_hdr->ar_tip, sr);
     if (if_walker) {
         if (ntohs(arp_hdr->ar_op) == arp_op_request) {
             /* Check if the packet's target is current router */
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
             /* Create reply packet to send back to sender */
-            uint8_t *reply_packet = create_arp_reply(packet, if_walker, packet_len, arp_hdr);
+            uint8_t *reply_packet = create_arp_reply(packet, sr_get_interface(sr, interface), packet_len, arp_hdr);
             sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
             printf("Sent an ARP reply packet\n");
             free(reply_packet);
+            return;
     
         } else if (ntohs(arp_hdr -> ar_op) == arp_op_reply) {
         /*  only send an ARP reply if the target IP address is one of your router’s IP addresses.
@@ -140,12 +154,13 @@ void sr_arphandler (struct sr_instance* sr,
                 while (packet){
                     sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) packet->buf;
                     memcpy(reply_eth_hdr->ether_dhost, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
-                    memcpy(reply_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
-                    reply_eth_hdr->ether_type = eth_hdr->ether_type;
-                    sr_send_packet(sr, packet->buf, packet->len, if_walker->name);
+                    memcpy(reply_eth_hdr->ether_shost, sr_get_interface(sr, packet->iface)->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                    reply_eth_hdr->ether_type = eth_hdr->ether_type; 
+                    sr_send_packet(sr, packet->buf, packet->len, packet->iface);
                     packet = packet -> next;
                 }
             }
+            return;
         }
     } else {
         printf ("Dropping packet: ARP request is not targeted at current router.");
@@ -162,10 +177,39 @@ void sr_iphandler (struct sr_instance* sr,
     assert(sr);
     assert(packet);
     assert(interface);
+
+
+    /* Get IP header */
     sr_ip_hdr_t *ip_hdr;
     ip_hdr = malloc (sizeof(sr_ip_hdr_t));
     memcpy (ip_hdr, (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t)), sizeof (sr_ip_hdr_t));
-    /* It is for me */
+
+    /* Check for mininum length  */
+    int min_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t);
+    if (len < min_len){
+        fprintf(stderr, "The IP header does not satisfy mininum length.");
+        return;
+    }
+
+    uint8_t original_cksum = ip_hdr->ip_sum;
+    ip_hdr->ip_sum = 0;
+    uint8_t received_cksum = cksum(ip_hdr, ip_hdr->ip_hl * 4);
+    if (original_cksum != received_cksum){
+        fprintf(stderr, "IP Header checksum fails.\n");
+        return;
+    }
+
+    /* Decrement TTL */
+    ip_hdr->ip_ttl = ip_hdr->ip_ttl - 1;
+    if (ip_hdr->ip_ttl == 0){
+        fprintf(stdout, "IP TTL is 0. Abandoning the packet.\n");
+        return;
+    } else {
+        ip_hdr->ip_sum = 0;
+        ip_hdr->ip_sum = cksum(ip_hdr, ip_hdr->ip_hl * 4);
+    }
+
+    /* Check if its for me */
     struct sr_if *if_walker = sr_get_interface_ip(ip_hdr->ip_dst, sr); 
 
     if (if_walker) {
@@ -174,21 +218,32 @@ void sr_iphandler (struct sr_instance* sr,
             sr_icmp_hdr_t *icmp_hdr;
             icmp_hdr = malloc (sizeof(sr_icmp_hdr_t));
             memcpy (icmp_hdr, (sr_icmp_hdr_t*) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), sizeof(sr_icmp_hdr_t));
+
+            /* Sanity Check */
+            min_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
+            if (len < min_len){
+                fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
+                return;
+            }
+
             /* If it's ICMP echo req, send echo reply */
             if (icmp_hdr->icmp_type == icmp_echo_request) {
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-                uint8_t *echo_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, echo_reply_type, -1); 
+                uint8_t *echo_reply = create_icmp_reply (packet, sr_get_interface(sr, interface), packet_len, ip_hdr, echo_reply_type, echo_reply_code); 
                 sr_send_packet (sr, echo_reply, packet_len, if_walker->name); 
                 free (echo_reply);
+                return;
             } else {
                 printf ("Not an ICMP echo request! Type unknown.");
+                return;
             }
         /* If it is TCP / UDP, send ICMP port unreachable */
         } else if (ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp) {
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-            uint8_t *port_unreachable_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, port_unreachable_type, port_unreachable_code); 
+            uint8_t *port_unreachable_reply = create_icmp_reply (packet, sr_get_interface(sr, interface), packet_len, ip_hdr, port_unreachable_type, port_unreachable_code); 
             sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
-            free (port_unreachable_reply);   
+            free (port_unreachable_reply);  
+            return; 
         }
     /* Not for me*/ 
     } else {
@@ -197,45 +252,46 @@ void sr_iphandler (struct sr_instance* sr,
         struct sr_arpcache *sr_cache = &sr->cache;
 
         if (longest_prefix) {
+            struct sr_if *rt_walker = sr_get_interface(sr, longest_prefix->interface);
             printf("There is a LPM.\n");
-            if_walker = sr_get_interface(sr, longest_prefix->interface);
             /* If there is a match, check ARP cache */
-            struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache, ip_hdr->ip_dst); 
+            struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache,  longest_prefix->gw.s_addr); 
             /* If there is a match in our ARP cache, send frame to next hop */
             if (arp_entry){
                 printf("There is a match in the ARP cache\n");
                 int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-                uint8_t *forward_packet = malloc(packet_len);
+
 
                 sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
                 memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
 
                 /* Create ethernet header */
-                sr_ethernet_hdr_t *forward_eth_hdr = (sr_ethernet_hdr_t *) forward_packet;
+                sr_ethernet_hdr_t *forward_eth_hdr = (sr_ethernet_hdr_t *) packet;
                 memcpy(forward_eth_hdr->ether_dhost, arp_entry->mac, sizeof(uint8_t)*ETHER_ADDR_LEN);
-                memcpy(forward_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(forward_eth_hdr->ether_shost, rt_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
                 forward_eth_hdr->ether_type = eth_hdr->ether_type;
 
-                /* Copy IP header */ 
-                sr_ip_hdr_t *forward_ip_hdr = (sr_ip_hdr_t *)(forward_packet + sizeof(sr_ethernet_hdr_t));
-                memcpy(forward_ip_hdr , ip_hdr, sizeof(sr_ip_hdr_t));
-
-                sr_send_packet (sr, forward_packet, packet_len, if_walker->name); 
+                sr_send_packet (sr, packet, packet_len, rt_walker->name); 
+                return;
 
             } else {
                 printf("There is no match in our ARP cache\n");
                 /* If there is no match in our ARP cache, send ARP request. */
                 /* If we don't get any reply after sending 5 request, send ICMP host unreachable */
-                struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, if_walker->name);
+                struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, rt_walker->name);
                 handle_arpreq(req, sr);
+                return;
             }
 
         /* If there is no match, send ICMP net unreachable */
         } else {
+            /* Find the interface responsible for hand*/
+            struct sr_if *dest_walker = sr_get_interface (sr, interface);  
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-            uint8_t *port_unreachable_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code); 
-            sr_send_packet (sr, port_unreachable_reply, packet_len, if_walker->name); 
-            free (port_unreachable_reply);  
+            uint8_t *dest_unreachable_reply = create_icmp_reply (packet, dest_walker, packet_len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code); 
+            sr_send_packet (sr, dest_unreachable_reply, packet_len, dest_walker->name); 
+            free (dest_unreachable_reply);  
+            return;
         }
     }
 }
@@ -273,21 +329,19 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
     /* Create ICMP Header */
     sr_icmp_hdr_t *reply_icmp_hdr = (sr_icmp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     reply_icmp_hdr->icmp_type = type;
-    if (code != -1) {
-        reply_icmp_hdr->icmp_code = code;
-    }
+    reply_icmp_hdr->icmp_code = code;
     reply_icmp_hdr->icmp_sum = cksum (reply_icmp_hdr, ntohs(ip_hdr->ip_len) - ip_hdr->ip_hl * 4);
     return reply_packet;
 }
 
-void create_ethernet_header (uint8_t * reply_packet, uint8_t * packet, struct sr_if * if_walker) {
+void create_ethernet_header (uint8_t * new_packet, uint8_t * packet, struct sr_if * if_walker) {
     /* Copy over original ethernet header */
     sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
     memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
 
     /* Create ethernet header */
-    sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) reply_packet;
-    memcpy(reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
-    memcpy(reply_eth_hdr ->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
-    reply_eth_hdr->ether_type = eth_hdr->ether_type;
+    sr_ethernet_hdr_t *new_eth_hdr = (sr_ethernet_hdr_t *) new_packet;
+    memcpy(new_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+    memcpy(new_eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+    new_eth_hdr->ether_type = eth_hdr->ether_type;
 }

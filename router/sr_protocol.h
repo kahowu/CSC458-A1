@@ -191,6 +191,7 @@ enum dest_net_unreachable {
 
 enum echo_reply {
   echo_reply_type = 0,
+  echo_reply_code = 0,
 };
 
 enum echo_request {
