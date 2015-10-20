@@ -293,11 +293,10 @@ void sr_iphandler (struct sr_instance* sr,
 
         /* If there is no match in routing table, send ICMP net unreachable */
         } else {
-            struct sr_if *dest_walker = sr_get_interface (sr, interface);  
-            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-            uint8_t *dest_unreachable_reply = create_icmp_reply (packet, dest_walker, packet_len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code); 
-            sr_send_packet (sr, dest_unreachable_reply, packet_len, dest_walker->name); 
-            free (dest_unreachable_reply);  
+            struct sr_if *dest_walker = sr_get_interface(sr, interface);
+            uint8_t *dest_unreachable_reply = create_icmp_reply(packet, dest_walker, len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code);
+            sr_send_packet(sr, dest_unreachable_reply, len, dest_walker->name);
+            free(dest_unreachable_reply);
             return;
         }
     }
