@@ -132,7 +132,7 @@ void sr_arphandler (struct sr_instance* sr,
             /* Check if the packet's target is current router */
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
             /* Create reply packet to send back to sender */
-            uint8_t *reply_packet = create_arp_reply(packet, sr_get_interface(sr, interface), packet_len, arp_hdr);
+            uint8_t *reply_packet = create_arp_reply(packet, if_walker, sr_get_interface(sr, interface), packet_len, arp_hdr);
             sr_send_packet(sr, reply_packet, packet_len, if_walker->name);
             printf("Sent an ARP reply packet\n");
             free(reply_packet);
@@ -301,7 +301,7 @@ void sr_iphandler (struct sr_instance* sr,
 }
 
 
-uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_arp_hdr_t* arp_hdr) {
+uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, struct sr_if* src_iface, int packet_len, sr_arp_hdr_t* arp_hdr) {
     uint8_t *reply_packet = malloc(packet_len);
     create_ethernet_header (reply_packet, packet, if_walker); 
     sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
@@ -313,7 +313,7 @@ uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_
 
     /* Switch sender and receiver hardware and IP address */
     memcpy(reply_arp_hdr->ar_sha, if_walker->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
-    reply_arp_hdr->ar_sip =  if_walker->ip; 
+    reply_arp_hdr->ar_sip =  src_iface->ip; 
     memcpy(reply_arp_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
     reply_arp_hdr->ar_tip = arp_hdr->ar_sip;
     return reply_packet;
