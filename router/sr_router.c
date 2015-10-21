@@ -447,8 +447,9 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
     /* Create IP header */
     sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
     memcpy(reply_ip_hdr, ip_hdr, sizeof(sr_ip_hdr_t));
+    uint32_t temp_ip =  reply_ip_hdr->ip_src;
     reply_ip_hdr->ip_src = ip_hdr->ip_dst;
-    reply_ip_hdr->ip_dst = ip_hdr->ip_src;
+    reply_ip_hdr->ip_dst = temp_ip;
     ip_hdr->ip_sum = 0;
     ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 
