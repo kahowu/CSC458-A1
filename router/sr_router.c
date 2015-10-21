@@ -422,11 +422,14 @@ void sr_iphandler (struct sr_instance* sr,
                 print_hdrs(reply_packet, len);
                 sr_send_packet(sr, reply_packet, len, router_if->name);
                 free(entry);
-            }
+            } else {
+                printf("ARP Cache miss\n");
+                struct sr_if *router_if = sr_get_interface(sr, prefix->interface);
+                struct sr_arpreq *req = sr_arpcache_queuereq(&(sr->cache), prefix->gw.s_addr, reply_packet, len, router_if->name);
+                sr_handlearpreq(sr, req);
+            }    
 
             free (reply_packet);
-
-
             return;
         }
     }
