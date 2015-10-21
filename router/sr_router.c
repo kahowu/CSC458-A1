@@ -213,33 +213,50 @@ void sr_iphandler (struct sr_instance* sr,
     if (if_walker) {
         uint8_t ip_p = ip_protocol((uint8_t *)ip_hdr); 
         if (ip_p == ip_protocol_icmp) {
-            /* Get ICMP header */
-            sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-            
-            /* Check for mininum length requirement */
-            min_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-            if (len < min_len){
+              /* Get ICMP header */
+              sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+         
+              /* Sanity Check */
+              int minlength = sizeof(sr_ethernet_hdr_t)  + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
+              if (len < minlength){
                 fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
                 return;
-            }
-
-            uint16_t original_cksum = icmp_hdr->icmp_sum;
-            icmp_hdr->icmp_sum = 0;
-            uint16_t received_cksum = cksum(icmp_hdr, len-sizeof(sr_ethernet_hdr_t)-sizeof(sr_ip_hdr_t));
-            if(received_cksum != original_cksum){
+              }
+         
+              uint16_t received_cksum = icmp_hdr->icmp_sum;
+              icmp_hdr->icmp_sum = 0;
+              uint16_t computed_cksum = cksum(icmp_hdr, len-sizeof(sr_ethernet_hdr_t)-sizeof(sr_ip_hdr_t));
+              if((received_cksum != computed_cksum)){
                 fprintf(stderr, "ICMP Header checksum varies\n");
                 return;
-            }
-            icmp_hdr->icmp_sum = original_cksum;
+              }
+              icmp_hdr->icmp_sum = received_cksum;
 
             /* If it's ICMP echo req, send echo reply */
             if (icmp_hdr->icmp_type == icmp_echo_request) {
-                printf("Received ICMP echo request. Sending echo reply\n");
-                int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-                uint8_t *echo_reply = create_icmp_reply (packet, if_walker, packet_len, ip_hdr, echo_reply_type, echo_reply_code); 
-                sr_send_packet (sr, echo_reply, packet_len, if_walker->name); 
-                free (echo_reply);
-                return;
+
+                sr_ethernet_hdr_t *eth_hdr = (sr_ethernet_hdr_t *) packet;
+
+                /* Make ethernet header */
+                memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+
+                /* Make IP header */
+                /* Now update it */
+                uint32_t temp_ip = ip_hdr->ip_src;
+                ip_hdr->ip_src = ip_hdr->ip_dst;
+                ip_hdr->ip_dst = temp_ip;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* Make ICMP Header */
+                icmp_hdr->icmp_type = echo_reply_type;
+                icmp_hdr->icmp_code = 0;
+                icmp_hdr->icmp_sum = 0;
+                icmp_hdr->icmp_sum = cksum(icmp_hdr, len-sizeof(sr_ethernet_hdr_t)-sizeof(sr_ip_hdr_t));
+                print_hdrs(packet, len);
+                sr_send_packet(sr, packet, len, if_walker->name);
+
             } else {
                 printf ("ICMP packet of unknown type \n");
                 return;
