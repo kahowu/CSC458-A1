@@ -281,7 +281,7 @@ void sr_iphandler (struct sr_instance* sr,
             reply_ip_hdr->ip_tos = 0;
             reply_ip_hdr->ip_len = htons(ip_len);
             reply_ip_hdr->ip_id = htons(0);
-            reply_ip_hdr->ip_off = htons(0);
+            reply_ip_hdr->ip_off = htons(IP_DF);
             reply_ip_hdr->ip_ttl = 64;
             reply_ip_hdr->ip_p = ip_protocol_icmp;
             reply_ip_hdr->ip_src = if_walker->ip;
@@ -345,8 +345,8 @@ void sr_iphandler (struct sr_instance* sr,
 
         /* If there is no match in routing table, send ICMP net unreachable */
         } else {
-            struct sr_if *dest_walker = sr_get_interface(sr, interface);
             /*
+            struct sr_if *dest_walker = sr_get_interface(sr, interface);
             uint8_t *dest_unreachable_reply = create_icmp_reply(packet, dest_walker, len, ip_hdr, dest_net_unreachable_type , dest_net_unreachable_code);
             sr_send_packet(sr, dest_unreachable_reply, len, dest_walker->name);
             free(dest_unreachable_reply);
@@ -370,8 +370,10 @@ void sr_iphandler (struct sr_instance* sr,
  
             /* Create ethernet header */
             sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) reply_packet;
+            /*
             memcpy(reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
             memcpy(reply_eth_hdr->ether_shost, dest_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+            */
             reply_eth_hdr->ether_type = eth_hdr->ether_type;
  
             /* Create IP header */
@@ -381,15 +383,11 @@ void sr_iphandler (struct sr_instance* sr,
             reply_ip_hdr->ip_tos = 0;
             reply_ip_hdr->ip_len = htons(ip_len);
             reply_ip_hdr->ip_id = htons(0);
-            reply_ip_hdr->ip_off = htons(0);
+            reply_ip_hdr->ip_off = htons(IP_DF);
             reply_ip_hdr->ip_ttl = 64;
             reply_ip_hdr->ip_p = ip_protocol_icmp;
-            reply_ip_hdr->ip_src = dest_walker -> ip;
             reply_ip_hdr->ip_dst = htonl(ip_hdr->ip_src);
  
-            memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
-            uint16_t ip_ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
-            reply_ip_hdr->ip_sum = ip_ck_sum;
  
             /* Create ICMP Header */
             sr_icmp_t3_hdr_t * reply_icmp_hdr = (sr_icmp_t3_hdr_t*)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
@@ -403,8 +401,29 @@ void sr_iphandler (struct sr_instance* sr,
             uint16_t icmp_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
             reply_icmp_hdr->icmp_sum = icmp_ck_sum;
  
-            sr_send_packet (sr, reply_packet, packet_len, dest_walker->name);
- 
+            /* sr_send_packet (sr, reply_packet, packet_len, dest_walker->name); */
+
+             struct sr_rt *prefix = routing_lpm(sr, ip_hdr->ip_src);
+            if (prefix){
+                printf("Found the match in routing table\n");
+                struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, prefix->gw.s_addr);
+                struct sr_if *router_if = sr_get_interface(sr, prefix->interface);
+
+                reply_ip_hdr->ip_src = router_if->ip;
+                reply_ip_hdr->ip_sum = 0;
+                memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
+                uint16_t ip_ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+                reply_ip_hdr->ip_sum = ip_ck_sum;
+
+                /* Make ethernet header */
+                memcpy(reply_eth_hdr->ether_dhost, entry->mac, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(reply_eth_hdr->ether_shost, router_if->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+
+                print_hdrs(reply_packet, len);
+                sr_send_packet(sr, reply_packet, len, router_if->name);
+                free(entry);
+            }
+
             free (reply_packet);
 
 
