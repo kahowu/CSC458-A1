@@ -55,27 +55,31 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
                 ip_hdr = malloc(sizeof(sr_ip_hdr_t));
                 memcpy(ip_hdr, (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t)), sizeof(sr_ip_hdr_t));
      
+
                 /* Create IP header */
                 sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
                 reply_ip_hdr->ip_v = 4;
-                reply_ip_hdr->ip_hl = 5;
+                reply_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;
                 reply_ip_hdr->ip_tos = 0;
                 reply_ip_hdr->ip_len = htons(ip_len);
                 reply_ip_hdr->ip_id = htons(0);
                 reply_ip_hdr->ip_off = htons(0);
-                reply_ip_hdr->ip_ttl = INIT_TTL;
+                reply_ip_hdr->ip_ttl = 64;
                 reply_ip_hdr->ip_p = ip_protocol_icmp;
-                reply_ip_hdr->ip_src = htonl(ip_hdr->ip_dst);
+                reply_ip_hdr->ip_src = if_walker-> ip;
                 reply_ip_hdr->ip_dst = htonl(ip_hdr->ip_src);
-     
+
                 memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
-                uint16_t ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
-                reply_ip_hdr->ip_sum = ck_sum;
-     
+                uint16_t ip_ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+                reply_ip_hdr->ip_sum = ip_ck_sum;
+
                 /* Create ICMP Header */
                 sr_icmp_t3_hdr_t * reply_icmp_hdr = (sr_icmp_t3_hdr_t*)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
                 reply_icmp_hdr->icmp_type = dest_host_unreachable_type;
                 reply_icmp_hdr->icmp_code = dest_host_unreachable_code;
+                reply_icmp_hdr->unused = 0;
+                reply_icmp_hdr->next_mtu = 0;
+                memcpy(reply_icmp_hdr->data, (uint8_t *)ip_hdr, ICMP_DATA_SIZE);
      
                 memset(&(reply_icmp_hdr->icmp_sum), 0, sizeof(uint16_t));
                 uint16_t reply_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));

@@ -193,7 +193,7 @@ void sr_iphandler (struct sr_instance* sr,
     /* Verify checksum */
     uint8_t original_cksum = ip_hdr->ip_sum;
     ip_hdr->ip_sum = 0;
-    uint8_t received_cksum = cksum(ip_hdr, ip_hdr->ip_hl * 4);
+    uint8_t received_cksum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
     if (original_cksum != received_cksum){
         fprintf(stderr, "IP Header checksum fails.\n");
         return;
@@ -206,7 +206,7 @@ void sr_iphandler (struct sr_instance* sr,
         return;
     } else {
         ip_hdr->ip_sum = 0;
-        ip_hdr->ip_sum = cksum(ip_hdr, ip_hdr->ip_hl * 4);
+        ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
     }
 
     /* Check if its for me */
@@ -230,7 +230,7 @@ void sr_iphandler (struct sr_instance* sr,
             /* Verify checksum */
             uint8_t original_cksum = icmp_hdr->icmp_sum;
             icmp_hdr->icmp_sum = 0;
-            uint8_t received_cksum = cksum(icmp_hdr, ntohs(ip_hdr->ip_len) - (ip_hdr->ip_hl*4));
+            uint8_t received_cksum = cksum(icmp_hdr, sizeof(sr_icmp_hdr_t));
             if(original_cksum != received_cksum){
                 fprintf(stderr, "IP Header checksum varies\n");
                 return;
@@ -277,28 +277,31 @@ void sr_iphandler (struct sr_instance* sr,
             /* Create IP header */
             sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
             reply_ip_hdr->ip_v = 4;
-            reply_ip_hdr->ip_hl = 5;
+            reply_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;
             reply_ip_hdr->ip_tos = 0;
             reply_ip_hdr->ip_len = htons(ip_len);
             reply_ip_hdr->ip_id = htons(0);
             reply_ip_hdr->ip_off = htons(0);
-            reply_ip_hdr->ip_ttl = INIT_TTL;
+            reply_ip_hdr->ip_ttl = 64;
             reply_ip_hdr->ip_p = ip_protocol_icmp;
-            reply_ip_hdr->ip_src = htonl(ip_hdr->ip_dst);
+            reply_ip_hdr->ip_src = if_walker->ip;
             reply_ip_hdr->ip_dst = htonl(ip_hdr->ip_src);
  
             memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
-            uint16_t ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
-            reply_ip_hdr->ip_sum = ck_sum;
+            uint16_t ip_ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+            reply_ip_hdr->ip_sum = ip_ck_sum;
  
             /* Create ICMP Header */
             sr_icmp_t3_hdr_t * reply_icmp_hdr = (sr_icmp_t3_hdr_t*)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
             reply_icmp_hdr->icmp_type = port_unreachable_type;
             reply_icmp_hdr->icmp_code = port_unreachable_code;
+            reply_icmp_hdr->unused = 0;
+            reply_icmp_hdr->next_mtu = 0;
+            memcpy(reply_icmp_hdr->data, (uint8_t *)ip_hdr, ICMP_DATA_SIZE);
  
             memset(&(reply_icmp_hdr->icmp_sum), 0, sizeof(uint16_t));
-            uint16_t reply_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
-            reply_icmp_hdr->icmp_sum = reply_ck_sum;
+            uint16_t icmp_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
+            reply_icmp_hdr->icmp_sum = icmp_ck_sum;
  
             sr_send_packet (sr, reply_packet, packet_len, if_walker->name);
  
@@ -374,28 +377,31 @@ void sr_iphandler (struct sr_instance* sr,
             /* Create IP header */
             sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
             reply_ip_hdr->ip_v = 4;
-            reply_ip_hdr->ip_hl = 5;
+            reply_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;
             reply_ip_hdr->ip_tos = 0;
             reply_ip_hdr->ip_len = htons(ip_len);
             reply_ip_hdr->ip_id = htons(0);
             reply_ip_hdr->ip_off = htons(0);
-            reply_ip_hdr->ip_ttl = INIT_TTL;
+            reply_ip_hdr->ip_ttl = 64;
             reply_ip_hdr->ip_p = ip_protocol_icmp;
-            reply_ip_hdr->ip_src = htonl(ip_hdr->ip_dst);
+            reply_ip_hdr->ip_src = dest_walker -> ip;
             reply_ip_hdr->ip_dst = htonl(ip_hdr->ip_src);
  
             memset(&(reply_ip_hdr->ip_sum), 0, sizeof(uint16_t));
-            uint16_t ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
-            reply_ip_hdr->ip_sum = ck_sum;
+            uint16_t ip_ck_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+            reply_ip_hdr->ip_sum = ip_ck_sum;
  
             /* Create ICMP Header */
             sr_icmp_t3_hdr_t * reply_icmp_hdr = (sr_icmp_t3_hdr_t*)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
             reply_icmp_hdr->icmp_type = dest_net_unreachable_type;
             reply_icmp_hdr->icmp_code = dest_net_unreachable_code;
+            reply_icmp_hdr->unused = 0;
+            reply_icmp_hdr->next_mtu = 0;
+            memcpy(reply_icmp_hdr->data, (uint8_t *)ip_hdr, ICMP_DATA_SIZE);
  
             memset(&(reply_icmp_hdr->icmp_sum), 0, sizeof(uint16_t));
-            uint16_t reply_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
-            reply_icmp_hdr->icmp_sum = reply_ck_sum;
+            uint16_t icmp_ck_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t3_hdr_t));
+            reply_icmp_hdr->icmp_sum = icmp_ck_sum;
  
             sr_send_packet (sr, reply_packet, packet_len, dest_walker->name);
  
@@ -452,7 +458,7 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
     sr_icmp_hdr_t *reply_icmp_hdr = (sr_icmp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     reply_icmp_hdr->icmp_type = type;
     reply_icmp_hdr->icmp_code = code;
-    reply_icmp_hdr->icmp_sum = cksum(reply_icmp_hdr, ntohs(ip_hdr->ip_len) - (ip_hdr->ip_hl*4));
+    reply_icmp_hdr->icmp_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_hdr_t));
     return reply_packet;
 }
 
