@@ -32,9 +32,6 @@
  *
  *---------------------------------------------------------------------*/
 
-
-struct sr_if *if_walker;
-
 void sr_init(struct sr_instance* sr)
 {
     /* REQUIRES */
@@ -129,8 +126,10 @@ void sr_arphandler (struct sr_instance* sr,
         if (ntohs(arp_hdr->ar_op) == arp_op_request) {
             printf("Received ARP Request!\n");
             /* Create reply packet to send back to sender */
-            uint8_t *arp_reply = create_arp_reply(sr_get_interface(sr, interface), target_iface, eth_hdr, arp_hdr, arp_reply_len);
-            sr_send_packet(sr, arp_reply, arp_reply_len, target_iface->name);
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            // uint8_t *arp_reply = create_arp_reply(sr_get_interface(sr, interface), target_iface, eth_hdr, arp_hdr, packet_len);
+            uint8_t *arp_reply = create_arp_reply(packet, target_iface, packet_len, arp_hdr, sr, interface);
+            sr_send_packet(sr, arp_reply, packet_len, target_iface->name);
             printf("Sent an ARP reply packet\n");
             free(arp_reply);
             return;
@@ -418,12 +417,41 @@ void create_icmp_header (uint8_t* new_packet, uint8_t type, unsigned int code, i
     new_icmp_hdr->icmp_sum = cksum(&(new_icmp_hdr->icmp_sum), len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
 }
 
-uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_ethernet_hdr_t* eth_hdr, sr_arp_hdr_t* arp_hdr, int packet_len) {
-    uint8_t *reply_packet = malloc(arp_reply_len);
-    /* Create Ethernet header */
-    create_ethernet_header (eth_hdr, reply_packet, src_iface->addr, eth_hdr->ether_shost); 
+// uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_ethernet_hdr_t* eth_hdr, sr_arp_hdr_t* arp_hdr, int packet_len) {
+//     uint8_t *reply_packet = malloc(arp_reply_len);
+//     /* Create Ethernet header */
+//     create_ethernet_header (eth_hdr, reply_packet, src_iface->addr, eth_hdr->ether_shost); 
+//     /* Create ARP header */
+//     create_arp_header (arp_hdr, reply_packet, out_iface->ip, arp_hdr->ar_sip, out_iface->addr, arp_hdr->ar_sha);
+//     return reply_packet;
+// }
+
+uint8_t* create_arp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_arp_hdr_t* arp_hdr, struct sr_instance *sr, char* interface) {
+    uint8_t *reply_packet = malloc(packet_len);
+
+    /* Copy ethernet header */
+    sr_ethernet_hdr_t *eth_hdr = malloc(sizeof(sr_ethernet_hdr_t));
+    memcpy(eth_hdr, (sr_ethernet_hdr_t *) packet, sizeof(sr_ethernet_hdr_t));
+
+    /* Create ethernet header */
+    sr_ethernet_hdr_t *reply_eth_hdr = (sr_ethernet_hdr_t *) reply_packet;
+    memcpy(reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+    memcpy(reply_eth_hdr->ether_shost, sr_get_interface(sr, interface)->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+    reply_eth_hdr->ether_type = eth_hdr->ether_type;
+
     /* Create ARP header */
-    create_arp_header (arp_hdr, reply_packet, out_iface->ip, arp_hdr->ar_sip, out_iface->addr, arp_hdr->ar_sha);
+    sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
+    reply_arp_hdr->ar_hrd = arp_hdr->ar_hrd;
+    reply_arp_hdr->ar_pro = arp_hdr->ar_pro;
+    reply_arp_hdr->ar_hln = arp_hdr->ar_hln;
+    reply_arp_hdr->ar_pln = arp_hdr->ar_pln;
+    reply_arp_hdr->ar_op =  htons(arp_op_reply);
+
+    /* Switch sender and receiver hardware and IP address */
+    memcpy(reply_arp_hdr->ar_sha, if_walker->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
+    reply_arp_hdr->ar_sip =  if_walker->ip;
+    memcpy(reply_arp_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
+    reply_arp_hdr->ar_tip = arp_hdr->ar_sip;
     return reply_packet;
 }
 
@@ -464,14 +492,19 @@ int check_min_len (unsigned int len, int type) {
     switch (type) {
         case ETH_HDR:
             min_len = sizeof (sr_ethernet_hdr_t);
+            break; 
         case ARP_PACKET:
             min_len = sizeof (sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            break; 
         case IP_PACKET:
             min_len = sizeof (sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t);
+            break; 
         case ICMP_PACKET:
             min_len = sizeof (sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof (sr_icmp_hdr_t);
+            break; 
         case ICMP_TYPE3_PACKET:
             min_len = sizeof (sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof (sr_icmp_t3_hdr_t);
+            break; 
     }
     /* Check for mininum length requirement */
     if (len < min_len) {
