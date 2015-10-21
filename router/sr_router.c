@@ -239,7 +239,7 @@ void sr_iphandler (struct sr_instance* sr,
 
                 /* Make ethernet header */
                 memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
-                memcpy(eth_hdr->ether_shost, if_walker->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_shost, sr_get_interface(sr, interface)->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
 
                 /* Make IP header */
                 /* Now update it */
@@ -255,7 +255,7 @@ void sr_iphandler (struct sr_instance* sr,
                 icmp_hdr->icmp_sum = 0;
                 icmp_hdr->icmp_sum = cksum(icmp_hdr, len-sizeof(sr_ethernet_hdr_t)-sizeof(sr_ip_hdr_t));
                 print_hdrs(packet, len);
-                sr_send_packet(sr, packet, len, if_walker->name);
+                sr_send_packet(sr, packet, len, interface);
 
             } else {
                 printf ("ICMP packet of unknown type \n");
