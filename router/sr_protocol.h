@@ -220,9 +220,4 @@ typedef struct sr_arp_hdr sr_arp_hdr_t;
 #define ICMP_PACKET 3
 #define ICMP_TYPE3_PACKET 4
 
-enum packet_len {
-  arp_reply_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t),
-  echo_reply_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
-};
-
 #endif /* -- SR_PROTOCOL_H -- */
