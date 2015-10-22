@@ -100,8 +100,6 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
-
-
 /*
  * Structure of an internet header, naked of options.
  */
@@ -197,7 +195,6 @@ enum echo_reply {
 enum echo_request {
   icmp_echo_request = 8,
 };
-
 
 struct sr_arp_hdr
 {

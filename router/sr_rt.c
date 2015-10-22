@@ -22,39 +22,6 @@
 #include "sr_rt.h"
 #include "sr_router.h"
 
-
-/*---------------------------------------------------------------------
- * Method: Return longest prefix routing table entry
- *
- *---------------------------------------------------------------------*/
-
-struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst) {
-    /* -- REQUIRES -- */
-    assert(sr);
-    assert(ip_dst);
-
-    struct sr_rt * routing_table = sr->routing_table;
-    int len = 0; 
-
-    struct sr_rt* rt_walker = 0;
-    struct sr_rt* longest_prefix = 0;
-
-
-    rt_walker = routing_table;
-    while (rt_walker) {
-        if ((ip_dst & rt_walker->mask.s_addr) == (rt_walker->dest.s_addr & rt_walker->mask.s_addr)) {
-            if ((ip_dst & rt_walker->mask.s_addr) > len){
-                len = ip_dst & rt_walker->mask.s_addr;
-                longest_prefix = rt_walker;
-            }
-        }
-        rt_walker = rt_walker->next; 
-    }
-
-    return longest_prefix;
-
-}
-
 /*---------------------------------------------------------------------
  * Method:
  *

@@ -127,7 +127,6 @@ void sr_arphandler (struct sr_instance* sr,
             printf("Received ARP Request!\n");
             /* Create reply packet to send back to sender */
             int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-            /* uint8_t *arp_reply = create_arp_reply(sr_get_interface(sr, interface), target_iface, eth_hdr, arp_hdr, packet_len); */
             uint8_t *arp_reply = malloc(packet_len);
 
             /* Create Ethernet header */
@@ -167,6 +166,9 @@ void sr_iphandler (struct sr_instance* sr,
     /* Get IP header */
     sr_ip_hdr_t * ip_hdr = get_ip_hdr(packet);
 
+    /* Get ICMP header */
+    sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr (packet);
+
     /* ARP Cache */
     struct sr_arpcache *sr_cache = &sr->cache;
 
@@ -184,7 +186,7 @@ void sr_iphandler (struct sr_instance* sr,
 
     /* If time exceeded, send out time exceeded message */
     if (decrement_and_recalculate (ip_hdr)){
-        printf("TTL of IP is 0. Discarding packet ...\n");
+        printf("TTL of IP is 0. Time exceeded. \n");
         int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
         uint8_t *new_packet = malloc(packet_len);
 
@@ -199,6 +201,7 @@ void sr_iphandler (struct sr_instance* sr,
 
         /* Send packet */
         sr_send_packet(sr, new_packet, packet_len, interface);
+        free (new_packet);
 
         return;
     }
@@ -209,20 +212,6 @@ void sr_iphandler (struct sr_instance* sr,
         uint8_t ip_p = ip_protocol((uint8_t *)ip_hdr); 
         /* Check if the ip protocol is of type ICMP */
         if (ip_p == ip_protocol_icmp) {
-            /* Get ICMP header */
-            sr_icmp_hdr_t *icmp_hdr = get_icmp_hdr (packet);
-            /* Check for mininum length  */
-            if (check_min_len (len, ICMP_PACKET)) {
-                printf( "ICMP packet does not satisfy mininum length requirement\n");
-                return;
-            }
-
-            /* Verify icmp checksum*/
-            if (verify_icmp_checksum (icmp_hdr, ICMP_PACKET, len)){
-                printf( "ICMP checksum fails\n");
-                return; 
-            }
-
             /* If it's ICMP echo req, send echo reply */
             if (icmp_hdr->icmp_type == icmp_echo_request) {
                 send_echo_reply (sr, packet, len, interface);
@@ -250,6 +239,9 @@ void sr_iphandler (struct sr_instance* sr,
 
             /* Send ICMP port unreachable message */
             send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, len); 
+            free (new_packet);
+
+            return; 
         }
     /* Not for me*/ 
     } else {
@@ -295,6 +287,8 @@ void sr_iphandler (struct sr_instance* sr,
 
             /* Send ICMP net unreachable message */
             send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, len); 
+
+            free (new_packet);
         }
     }
 }
@@ -518,7 +512,6 @@ int check_min_len (unsigned int len, int type) {
     return 0;
 }
 
-
 /* Return an interface if the targer IP belongs to our router */
 struct sr_if* get_router_interface (uint32_t ip, struct sr_instance* sr) {
     struct sr_if* curr_iface = sr->if_list;
@@ -533,4 +526,25 @@ struct sr_if* get_router_interface (uint32_t ip, struct sr_instance* sr) {
     }
     return NULL;
 } 
+
+/* Return longest prefix match */
+struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst) {
+    /* -- REQUIRES -- */
+    struct sr_rt * routing_table = sr->routing_table;
+    int len = 0; 
+    struct sr_rt* rt_walker = 0;
+    struct sr_rt* longest_prefix = 0;
+    rt_walker = routing_table;
+    while (rt_walker) {
+        if ((ip_dst & rt_walker->mask.s_addr) == (rt_walker->dest.s_addr & rt_walker->mask.s_addr)) {
+            if ((ip_dst & rt_walker->mask.s_addr) > len){
+                len = ip_dst & rt_walker->mask.s_addr;
+                longest_prefix = rt_walker;
+            }
+        }
+        rt_walker = rt_walker->next; 
+    }
+    return longest_prefix;
+}
+
 

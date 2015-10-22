@@ -85,6 +85,7 @@ int check_min_len (unsigned int len, int type);
 int verify_ip_checksum (sr_ip_hdr_t *ip_hdr);
 int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len);
 int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr);
+struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst);
 
 struct sr_if* get_router_interface (uint32_t ip, struct sr_instance* sr);
 
@@ -103,10 +104,5 @@ uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet
 void send_arp_req (sr_arp_hdr_t *arp_hdr, struct sr_arpcache *cache, struct sr_instance* sr);
 void send_echo_reply (struct sr_instance* sr, uint8_t * packet, unsigned int len, char* interface);
 void send_icmp_type3_msg (uint8_t * new_packet, struct sr_rt *src_lpm, struct sr_arpcache *sr_cache, struct sr_instance* sr, char* interface, unsigned int len);
-
-
-/* uint8_t* create_arp_reply  (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_arp_hdr_t* arp_hdr, struct sr_instance *sr, char* interface);*/
-
-
 
 #endif /* SR_ROUTER_H */
