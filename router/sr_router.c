@@ -334,9 +334,7 @@ int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len) {
             return 1;
         }
         icmp_hdr->icmp_sum = received_cksum;
-    } else if (type == ICMP_TYPE3_PACKET) {
-
-    }
+    } 
     return 0; 
 }
 
@@ -407,7 +405,6 @@ void create_icmp_type3_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint8_t
 }
 
 void send_echo_reply (struct sr_instance* sr, uint8_t * packet, unsigned int len, char* interface) {
-
     /* Get Ethernet header */
     sr_ethernet_hdr_t* eth_hdr = get_eth_hdr(packet);
 
@@ -529,7 +526,6 @@ struct sr_if* get_router_interface (uint32_t ip, struct sr_instance* sr) {
 
 /* Return longest prefix match */
 struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst) {
-    /* -- REQUIRES -- */
     struct sr_rt * routing_table = sr->routing_table;
     int len = 0; 
     struct sr_rt* rt_walker = 0;
