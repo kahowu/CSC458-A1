@@ -94,13 +94,15 @@ void sr_iphandler (struct sr_instance* sr, uint8_t * packet/* lent */, unsigned 
 void create_ethernet_header (sr_ethernet_hdr_t * eth_hdr, uint8_t * new_packet, uint8_t *src_eth_addr, uint8_t *dest_eth_addr, uint16_t ether_type);
 void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, uint32_t src_ip, uint32_t dest_ip, unsigned char *sha, unsigned char *tha);
 void create_ip_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint32_t ip_src, uint32_t ip_dst);
-void create_icmp_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint8_t type, unsigned int code);
+void create_icmp_type3_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint8_t type, unsigned int code);
 
 uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_ethernet_hdr_t* eth_hdr, sr_arp_hdr_t* arp_hdr, int packet_len);
 uint8_t *create_echo_reply (struct sr_if* src_iface, sr_ethernet_hdr_t* eth_hdr, sr_ip_hdr_t* ip_hdr, int packet_len);
 uint8_t* create_icmp_reply (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_ip_hdr_t *ip_hdr, uint8_t type, unsigned int code); 
 
 void send_arp_req (sr_arp_hdr_t *arp_hdr, struct sr_arpcache *cache, struct sr_instance* sr);
+
+void send_icmp_type3_msg (uint8_t * new_packet, struct sr_rt *src_lpm, struct sr_arpcache *sr_cache, struct sr_instance* sr, char* interface, unsigned int len);
 
 
 /* uint8_t* create_arp_reply  (uint8_t* packet, struct sr_if* if_walker, int packet_len, sr_arp_hdr_t* arp_hdr, struct sr_instance *sr, char* interface);*/
