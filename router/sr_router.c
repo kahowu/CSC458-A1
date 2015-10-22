@@ -199,9 +199,26 @@ void sr_iphandler (struct sr_instance* sr,
                     printf( "ICMP checksum fails\n");
                     return; 
                 }
-                uint8_t *echo_reply = create_echo_reply (sr_get_interface(sr, interface), eth_hdr, ip_hdr, len); 
-                sr_send_packet(sr, echo_reply, len, interface);
-                free (echo_reply);
+
+                /* Make ethernet header */
+                memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_shost, sr_get_interface(sr, interface)->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+
+                /* Make IP header */
+                /* Now update it */
+                uint32_t temp_ip = ip_hdr->ip_src;
+                ip_hdr->ip_src = ip_hdr->ip_dst;
+                ip_hdr->ip_dst = temp_ip;
+                ip_hdr->ip_sum = 0;
+                ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
+
+                /* Make ICMP Header */
+                icmp_hdr->icmp_type = echo_reply_type;
+                icmp_hdr->icmp_code = 0;
+                icmp_hdr->icmp_sum = 0;
+                icmp_hdr->icmp_sum = cksum(icmp_hdr, len-sizeof(sr_ethernet_hdr_t)-sizeof(sr_ip_hdr_t));
+                print_hdrs(packet, len);
+                sr_send_packet(sr, packet, len, interface);
                 return;
             } else {
                 printf ("ICMP packet of unknown type\n");
@@ -384,7 +401,7 @@ void create_ethernet_header (sr_ethernet_hdr_t * eth_hdr, uint8_t * new_packet, 
     new_eth_hdr->ether_type = eth_hdr->ether_type;
 } 
 
-void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, uint8_t src_ip, uint8_t dest_ip, unsigned char* sha, unsigned char* tha) {
+void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, uint32_t src_ip, uint32_t dest_ip, unsigned char* sha, unsigned char* tha) {
     /* Create ARP header */
     sr_arp_hdr_t *new_arp_hdr = (sr_arp_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
     new_arp_hdr->ar_hrd = arp_hdr->ar_hrd;
@@ -401,7 +418,7 @@ void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, uint8_t src_
 }
 
 void create_ip_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet) {
-    sr_ip_hdr_t *new_ip_hdr = (sr_ip_hdr_t *) (new_packet + sizeof(sr_ethernet_hdr_t));
+    sr_ip_hdr_t* new_ip_hdr = (sr_ip_hdr_t *) (new_packet + sizeof(sr_ethernet_hdr_t));
     memcpy (new_ip_hdr, ip_hdr, sizeof (sr_ip_hdr_t));
     uint32_t src_ip = ip_hdr->ip_src; 
     new_ip_hdr->ip_src = ip_hdr->ip_dst;
@@ -421,10 +438,12 @@ void create_icmp_header (uint8_t* new_packet, uint8_t type, unsigned int code, i
 uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_ethernet_hdr_t* eth_hdr, sr_arp_hdr_t* arp_hdr, int packet_len) {
     uint8_t *reply_packet = malloc(arp_reply_len);
     /* Create Ethernet header */
-    create_ethernet_header (eth_hdr, reply_packet, src_iface->addr, eth_hdr->ether_shost); 
+    create_ethernet_header (eth_hdr, reply_packet, (uint8_t*)(src_iface->addr), eth_hdr->ether_shost); 
     /* Create ARP header */
     create_arp_header (arp_hdr, reply_packet, out_iface->ip, arp_hdr->ar_sip, out_iface->addr, arp_hdr->ar_sha); 
-    /*
+
+/*
+    
     sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
     reply_arp_hdr->ar_hrd = arp_hdr->ar_hrd;
     reply_arp_hdr->ar_pro = arp_hdr->ar_pro;
@@ -437,14 +456,14 @@ uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_
     reply_arp_hdr->ar_sip =  out_iface->ip;
     memcpy(reply_arp_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
     reply_arp_hdr->ar_tip = arp_hdr->ar_sip;
-    */
+*/
     return reply_packet;
 }
 
 uint8_t *create_echo_reply (struct sr_if* src_iface, sr_ethernet_hdr_t* eth_hdr, sr_ip_hdr_t* ip_hdr, int packet_len) {
     uint8_t *reply_packet = malloc(echo_reply_len);
     /* Create Ethernet header */
-    create_ethernet_header (eth_hdr, reply_packet, src_iface->addr, eth_hdr->ether_shost); 
+    create_ethernet_header (eth_hdr, reply_packet, (uint8_t*) (src_iface->addr), eth_hdr->ether_shost); 
     /* Create IP header */
     create_ip_header (ip_hdr, reply_packet);
     /* Create ICMP header */
