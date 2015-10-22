@@ -422,19 +422,7 @@ uint8_t* create_arp_reply (struct sr_if* src_iface, struct sr_if* out_iface, sr_
     /* Create Ethernet header */
     create_ethernet_header (eth_hdr, reply_packet, src_iface->addr, eth_hdr->ether_shost); 
     /* Create ARP header */
-    /* create_arp_header (arp_hdr, reply_packet, out_iface->ip, arp_hdr->ar_sip, out_iface->addr, arp_hdr->ar_sha); */
-    sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_packet + sizeof(sr_ethernet_hdr_t));
-    reply_arp_hdr->ar_hrd = arp_hdr->ar_hrd;
-    reply_arp_hdr->ar_pro = arp_hdr->ar_pro;
-    reply_arp_hdr->ar_hln = arp_hdr->ar_hln;
-    reply_arp_hdr->ar_pln = arp_hdr->ar_pln;
-    reply_arp_hdr->ar_op =  htons(arp_op_reply);
-
-    /* Switch sender and receiver hardware and IP address */
-    memcpy(reply_arp_hdr->ar_sha, out_iface->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
-    reply_arp_hdr->ar_sip =  out_iface->ip;
-    memcpy(reply_arp_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
-    reply_arp_hdr->ar_tip = arp_hdr->ar_sip;
+    create_arp_header (arp_hdr, reply_packet, out_iface->ip, arp_hdr->ar_sip, out_iface->addr, arp_hdr->ar_sha); 
     return reply_packet;
 }
 
