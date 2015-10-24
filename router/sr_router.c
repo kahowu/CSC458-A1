@@ -90,10 +90,10 @@ void sr_handlepacket(struct sr_instance* sr,
 
     uint16_t ethtype = ethertype((uint8_t *)eth_hdr);
 
-    if (ethtype == ethertype_ip){ /* IP */    
+    if (ethtype == ethertype_ip){  
         printf("Received the IP Packet!\n");
         sr_iphandler(sr, packet, len, interface);
-    } else if (ethtype == ethertype_arp){ /* ARP */
+    } else if (ethtype == ethertype_arp){
         printf("Received the ARP Packet!\n");
         sr_arphandler(sr, packet, len, interface);
     }
@@ -212,6 +212,12 @@ void sr_iphandler (struct sr_instance* sr,
         uint8_t ip_p = ip_protocol((uint8_t *)ip_hdr); 
         /* Check if the ip protocol is of type ICMP */
         if (ip_p == ip_protocol_icmp) {
+            /* Check for mininum length  */
+            if (check_min_len (len, ICMP_PACKET)) {
+                printf("IP packet does not satisfy mininum length requirement \n");
+                return;
+            }
+
             /* If it's ICMP echo req, send echo reply */
             if (icmp_hdr->icmp_type == icmp_echo_request) {
                 send_echo_reply (sr, packet, len, interface);
@@ -222,11 +228,11 @@ void sr_iphandler (struct sr_instance* sr,
             }
         /* If it is TCP / UDP, send ICMP port unreachable */
         } else if (ip_p == ip_protocol_udp || ip_p == ip_protocol_tcp) {
-            int len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
             uint8_t *new_packet = malloc(len);
 
             /* Create ethernet header */
-            create_ethernet_header (eth_hdr, new_packet, target_iface->addr, eth_hdr->ether_shost, htons(ethertype_ip));
+            create_ethernet_header (eth_hdr, new_packet, sr_get_interface(sr, interface)->addr, eth_hdr->ether_shost, htons(ethertype_ip));
 
             /* Create ip header */
             create_ip_header (ip_hdr, new_packet, target_iface->ip, ip_hdr->ip_src);
@@ -234,12 +240,8 @@ void sr_iphandler (struct sr_instance* sr,
             /* Create icmp header */
             create_icmp_type3_header (ip_hdr, new_packet, port_unreachable_type, port_unreachable_code);
 
-            /* Look up routing table for rt entry that is mapped to the source of received packet */
-            struct sr_rt *src_lpm = routing_lpm(sr, ip_hdr->ip_src);
-
             /* Send ICMP port unreachable message */
-            send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, len); 
-            free (new_packet);
+            sr_send_packet (sr, new_packet, packet_len, interface);
 
             return; 
         }
@@ -255,8 +257,8 @@ void sr_iphandler (struct sr_instance* sr,
             /* If there is a match in our ARP cache, send frame to next hop */
             if (arp_entry){
                 printf("There is a match in the ARP cache\n");
-                memcpy(eth_hdr->ether_dhost, arp_entry->mac, sizeof(unsigned char)*ETHER_ADDR_LEN);
                 memcpy(eth_hdr->ether_shost, out_iface->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_dhost, arp_entry->mac, sizeof(unsigned char)*ETHER_ADDR_LEN);
                 sr_send_packet (sr, packet, len, out_iface->name); 
                 return;
 
@@ -270,8 +272,8 @@ void sr_iphandler (struct sr_instance* sr,
 
         /* If there is no match in routing table, send ICMP net unreachable */
         } else {
-            int len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
-            uint8_t *new_packet = malloc(len);
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+            uint8_t *new_packet = malloc(packet_len);
 
             /* Create ethernet header */
             create_ethernet_header (eth_hdr, new_packet, eth_hdr->ether_dhost, eth_hdr->ether_shost, htons(ethertype_ip));
@@ -286,7 +288,7 @@ void sr_iphandler (struct sr_instance* sr,
             struct sr_rt *src_lpm = routing_lpm(sr, ip_hdr->ip_src);
 
             /* Send ICMP net unreachable message */
-            send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, len); 
+            send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, packet_len); 
 
             free (new_packet);
         }
