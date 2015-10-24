@@ -134,6 +134,7 @@ void sr_arphandler (struct sr_instance* sr,
             /* Create ARP header */
             create_arp_header (arp_hdr, arp_reply, target_iface); 
 
+            /* Send out ARP reply */
             sr_send_packet(sr, arp_reply, packet_len, target_iface->name);
             printf("Sent an ARP reply packet\n");
             free(arp_reply);
@@ -199,7 +200,7 @@ void sr_iphandler (struct sr_instance* sr,
         /* Create ICMP Header */
         create_icmp_type3_header (ip_hdr, new_packet, time_exceeded_type, time_exceeded_code);
 
-        /* Send packet */
+        /* Send time exceeded ICMP packet */
         sr_send_packet(sr, new_packet, packet_len, interface);
         free (new_packet);
 
@@ -212,11 +213,17 @@ void sr_iphandler (struct sr_instance* sr,
         uint8_t ip_p = ip_protocol((uint8_t *)ip_hdr); 
         /* Check if the ip protocol is of type ICMP */
         if (ip_p == ip_protocol_icmp) {
-            /* Check for mininum length  */
+            /* Check for mininum length for ICMP Packet */
             if (check_min_len (len, ICMP_PACKET)) {
                 printf("IP packet does not satisfy mininum length requirement \n");
                 return;
             }
+
+            /* Check ICMP checksum */
+            if (verify_icmp_checksum (icmp_hdr, ICMP_PACKET, len)) {
+                printf("ICMP packet fails checksum \n");
+                return;
+            } 
 
             /* If it's ICMP echo req, send echo reply */
             if (icmp_hdr->icmp_type == icmp_echo_request) {
@@ -263,8 +270,8 @@ void sr_iphandler (struct sr_instance* sr,
                 return;
 
             } else {
-                printf("There is no match in our ARP cache\n");
                 /* If there is no match in our ARP cache, send ARP request. */
+                printf("There is no match in our ARP cache\n");
                 struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, out_iface->name);
                 handle_arpreq(req, sr);
                 return;
@@ -369,14 +376,14 @@ void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, struct sr_if
     new_arp_hdr->ar_pln = arp_hdr->ar_pln;
     new_arp_hdr->ar_op =  htons(arp_op_reply);
 
-    /* Switch sender and receiver hardware and IP address */
+    /* Switch sender and receiver hardware address and IP address */
     memcpy(new_arp_hdr->ar_sha, src_iface->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
     new_arp_hdr->ar_sip =  src_iface->ip; 
     memcpy(new_arp_hdr->ar_tha, arp_hdr->ar_sha, sizeof(unsigned char)*ETHER_ADDR_LEN);
     new_arp_hdr->ar_tip = arp_hdr->ar_sip;
 }
 
-/* Create IP header */
+/* Create IP header for ICMP */
 void create_ip_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint32_t ip_src, uint32_t ip_dst) {
     sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
     reply_ip_hdr->ip_v = 4;
@@ -435,10 +442,11 @@ void send_echo_reply (struct sr_instance* sr, uint8_t * packet, unsigned int len
     sr_send_packet(sr, packet, len, interface);
 }
 
-/* Send ARP request*/
+/* Send ARP request */
 void send_arp_req (sr_arp_hdr_t *arp_hdr, struct sr_arpcache *cache, struct sr_instance* sr) {
     struct sr_arpreq *req = sr_arpcache_insert(cache, arp_hdr->ar_sha, arp_hdr->ar_sip);
     if (req){
+        /* Sending out outstanding packets for a request */
         struct sr_packet *req_packet = req->packets;
         while (req_packet) {
             sr_ethernet_hdr_t *req_eth_hdr = (sr_ethernet_hdr_t *) req_packet->buf;
@@ -453,13 +461,13 @@ void send_arp_req (sr_arp_hdr_t *arp_hdr, struct sr_arpcache *cache, struct sr_i
     sr_arpreq_destroy(cache, req);
 }
 
-/* Send ICMP type 3 message */
+/* Send ICMP type 3 message after performing longest prefix match */
 void send_icmp_type3_msg(uint8_t * new_packet, struct sr_rt *src_lpm, struct sr_arpcache *sr_cache, struct sr_instance* sr, char* interface, unsigned int len)  {
     if (src_lpm){
         printf("Found the match in routing table\n");
         struct sr_arpentry *entry = sr_arpcache_lookup(sr_cache, src_lpm->gw.s_addr);
         if (entry){
-            printf("Found the ARP in the cache\n");
+            printf("Found the ARP entry in the cache\n");
             struct sr_if *out_iface = sr_get_interface(sr, src_lpm->interface);
 
             /* Modify ethernet header */
@@ -476,7 +484,7 @@ void send_icmp_type3_msg(uint8_t * new_packet, struct sr_rt *src_lpm, struct sr_
             sr_send_packet(sr, new_packet, len, out_iface->name);
             free(entry);
         } else {
-            printf("ARP Cache miss\n");
+            /* If there is no match in our ARP cache, send ARP request. */
             struct sr_arpreq *req = sr_arpcache_queuereq(sr_cache, src_lpm->gw.s_addr, new_packet, len, src_lpm->interface);
             handle_arpreq(req, sr);
         }    
@@ -515,10 +523,8 @@ int check_min_len (unsigned int len, int type) {
 struct sr_if* get_router_interface (uint32_t ip, struct sr_instance* sr) {
     struct sr_if* curr_iface = sr->if_list;
     while (curr_iface){
-        /* Check if the interface IP matches the receiving router's IP */
+        /* Check if the packet is targeted towards the current router interface */
         if (curr_iface->ip == ip){
-            printf("Packet is for me \n");
-            /* The packet is targeted towards the current router */
             return curr_iface;
         }
         curr_iface = curr_iface->next;
@@ -534,6 +540,7 @@ struct sr_rt * routing_lpm (struct sr_instance* sr, uint32_t ip_dst) {
     struct sr_rt* longest_prefix = 0;
     rt_walker = routing_table;
     while (rt_walker) {
+        /* Compare the bitwise AND of target and the subnet mask with the bitwise AND of routing table entry and the subnet mask */
         if ((ip_dst & rt_walker->mask.s_addr) == (rt_walker->dest.s_addr & rt_walker->mask.s_addr)) {
             if ((ip_dst & rt_walker->mask.s_addr) > len){
                 len = ip_dst & rt_walker->mask.s_addr;

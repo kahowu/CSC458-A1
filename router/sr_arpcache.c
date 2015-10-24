@@ -12,7 +12,7 @@
 #include "sr_protocol.h"
 #include "sr_utils.h"
 
-
+/* Send ARP request if the request in our cache is not sent more than 5 times */
 void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
     struct sr_arpcache *sr_cache = &sr->cache;
     time_t curr_time;
@@ -20,6 +20,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
     double one_sec = 1.0;
     if (difftime(curr_time, req->sent) >  one_sec){
         struct sr_packet *packet = req->packets; 
+        /* If packet is sent more than equal or more than 5 times, send ICMP host unreachable message */
         if ((req->times_sent) >= 5) {
             printf("Packet sent more than 5 times\n");
             while (packet) {
@@ -47,7 +48,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
                 struct sr_rt *src_lpm = routing_lpm(sr, ip_hdr->ip_src);
 
                 /* Send ICMP host unreachable message */
-                send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, packet->len); 
+                send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, packet_len); 
                 
                 free(new_packet);
 
@@ -57,18 +58,19 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
         } else {
             /* Send out arp request */
             struct sr_if *target_iface = sr_get_interface(sr, packet->iface);
-            int len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-            uint8_t *new_packet = malloc(len);
+            int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+            uint8_t *new_packet = malloc(packet_len);
 
+            /* Create ethernet header */
             sr_ethernet_hdr_t *new_eth_hdr = (sr_ethernet_hdr_t *) new_packet;
             memset(new_eth_hdr->ether_dhost, 255, sizeof(uint8_t)*ETHER_ADDR_LEN);
             memcpy(new_eth_hdr->ether_shost, target_iface->addr, sizeof(uint8_t)*ETHER_ADDR_LEN);
             new_eth_hdr->ether_type = htons(ethertype_arp);
 
-            /* Make ARP header */
+            /* Create ARP header */
             sr_arp_hdr_t *new_arp_hdr = (sr_arp_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
             new_arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
-            new_arp_hdr->ar_pro = htons(ethertype_ip);
+            new_arp_hdr->ar_pro = htons(ethertype_arp);
             new_arp_hdr->ar_hln = ETHER_ADDR_LEN;
             new_arp_hdr->ar_pln = sizeof(uint32_t);
             new_arp_hdr->ar_op = htons(arp_op_request);
@@ -77,7 +79,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             memset(new_arp_hdr->ar_tha, 0, sizeof(unsigned char)*ETHER_ADDR_LEN);
             new_arp_hdr->ar_tip = req->ip;
 
-            sr_send_packet(sr, new_packet, len, target_iface->name);            
+            sr_send_packet(sr, new_packet, packet_len, target_iface->name);            
             free(new_packet);
         }
             req->sent = curr_time;
