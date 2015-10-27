@@ -70,7 +70,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             /* Create ARP header */
             sr_arp_hdr_t *new_arp_hdr = (sr_arp_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
             new_arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
-            new_arp_hdr->ar_pro = htons(ethertype_arp);
+            new_arp_hdr->ar_pro = htons(ethertype_ip);
             new_arp_hdr->ar_hln = ETHER_ADDR_LEN;
             new_arp_hdr->ar_pln = sizeof(uint32_t);
             new_arp_hdr->ar_op = htons(arp_op_request);
