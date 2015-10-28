@@ -221,7 +221,7 @@ void sr_iphandler (struct sr_instance* sr,
         new_icmp_hdr->icmp_code = time_exceeded_code;
         new_icmp_hdr->unused = 0;
         new_icmp_hdr->icmp_sum = 0;
-        memcpy(new_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE);
+        memcpy(new_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE_T11);
         new_icmp_hdr->icmp_sum = cksum(new_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
 
         /* Send time exceeded ICMP packet */

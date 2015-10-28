@@ -73,6 +73,7 @@
   #endif
 #endif
 #define ICMP_DATA_SIZE 28
+ #define ICMP_DATA_SIZE_T11 84
 
 /* Structure of a ICMP header
  */
@@ -106,7 +107,7 @@ struct sr_icmp_t11_hdr {
   uint8_t icmp_code;
   uint16_t icmp_sum;
   uint32_t unused;
-  uint8_t data[ICMP_DATA_SIZE];
+  uint8_t data[ICMP_DATA_SIZE_T11];
 
 } __attribute__ ((packed)) ;
 typedef struct sr_icmp_t11_hdr sr_icmp_t11_hdr_t;
