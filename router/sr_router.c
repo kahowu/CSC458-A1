@@ -194,14 +194,39 @@ void sr_iphandler (struct sr_instance* sr,
         /* Create ethernet header */
         create_ethernet_header (eth_hdr, new_packet, sr_get_interface(sr, interface)->addr, eth_hdr->ether_shost, htons(ethertype_ip));
 
-        /* Create IP header */
-        create_ip_header (ip_hdr, new_packet, sr_get_interface(sr, interface)->ip, ip_hdr->ip_src);
+        /* Create IP header 
+        create_ip_header (ip_hdr, new_packet, sr_get_interface(sr, interface)->ip, ip_hdr->ip_src); */
 
-        /* Create ICMP Header */
-        create_icmp_type3_header (ip_hdr, new_packet, time_exceeded_type, time_exceeded_code);
+        /* Create ICMP Header 
+        create_icmp_type3_header (ip_hdr, new_packet, time_exceeded_type, time_exceeded_code); */
+
+        /* Make IP header */
+        sr_ip_hdr_t *new_ip_hdr = (sr_ip_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
+        new_ip_hdr->ip_v = 4;
+        new_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t)/4;
+        new_ip_hdr->ip_tos = 0;
+        new_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t11_hdr_t));
+        new_ip_hdr->ip_id = htons(0);
+        new_ip_hdr->ip_off = htons(IP_DF);
+        new_ip_hdr->ip_ttl = 64;
+        new_ip_hdr->ip_dst = ip_hdr->ip_src;
+        new_ip_hdr->ip_p = ip_protocol_icmp;
+        new_ip_hdr->ip_src = sr_get_interface(sr, interface)->ip;
+        new_ip_hdr->ip_sum = 0;
+        new_ip_hdr->ip_sum = cksum(new_ip_hdr, sizeof(sr_ip_hdr_t));
+
+        /* Make ICMP Header */
+        sr_icmp_t11_hdr_t *reply_icmp_hdr = (sr_icmp_t11_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        reply_icmp_hdr->icmp_type = time_exceeded_type;
+        reply_icmp_hdr->icmp_code = time_exceeded_code;
+        reply_icmp_hdr->unused = 0;
+        reply_icmp_hdr->icmp_sum = 0;
+        memcpy(reply_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE_T11);
+        reply_icmp_hdr->icmp_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
 
         /* Send time exceeded ICMP packet */
-        sr_send_packet(sr, new_packet, packet_len, interface);
+        sr_send_packet(sr, new_packet, len, interface);
+
         free (new_packet);
 
         return;
@@ -349,10 +374,10 @@ int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len) {
 
 /* Decrement TTL and calculate new checksum */
 int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr) {
-    ip_hdr->ip_ttl = ip_hdr->ip_ttl - 1;
-    if (ip_hdr->ip_ttl == 0){
+    if (ip_hdr->ip_ttl <= 1){
         return 1;
     } else {
+        ip_hdr->ip_ttl = ip_hdr->ip_ttl - 1;
         memset(&(ip_hdr->ip_sum), 0, sizeof(uint16_t));
         ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
     }
@@ -385,19 +410,19 @@ void create_arp_header (sr_arp_hdr_t* arp_hdr, uint8_t* new_packet, struct sr_if
 
 /* Create IP header for ICMP */
 void create_ip_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint32_t ip_src, uint32_t ip_dst) {
-    sr_ip_hdr_t *reply_ip_hdr = (sr_ip_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
-    reply_ip_hdr->ip_v = 4;
-    reply_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t)/4;
-    reply_ip_hdr->ip_tos = 0;
-    reply_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
-    reply_ip_hdr->ip_id = htons(0);
-    reply_ip_hdr->ip_off = htons(IP_DF);
-    reply_ip_hdr->ip_ttl = 64;
-    reply_ip_hdr->ip_dst = ip_dst;
-    reply_ip_hdr->ip_p = ip_protocol_icmp;
-    reply_ip_hdr->ip_src = ip_src;
-    reply_ip_hdr->ip_sum = 0;
-    reply_ip_hdr->ip_sum = cksum(reply_ip_hdr, sizeof(sr_ip_hdr_t));
+    sr_ip_hdr_t *new_ip_hdr = (sr_ip_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t));
+    new_ip_hdr->ip_v = 4;
+    new_ip_hdr->ip_hl = sizeof(sr_ip_hdr_t)/4;
+    new_ip_hdr->ip_tos = 0;
+    new_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+    new_ip_hdr->ip_id = htons(0);
+    new_ip_hdr->ip_off = htons(IP_DF);
+    new_ip_hdr->ip_ttl = 64;
+    new_ip_hdr->ip_dst = ip_dst;
+    new_ip_hdr->ip_p = ip_protocol_icmp;
+    new_ip_hdr->ip_src = ip_src;
+    new_ip_hdr->ip_sum = 0;
+    new_ip_hdr->ip_sum = cksum(new_ip_hdr, sizeof(sr_ip_hdr_t));
 }
 
 
