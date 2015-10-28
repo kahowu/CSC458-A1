@@ -216,13 +216,13 @@ void sr_iphandler (struct sr_instance* sr,
         new_ip_hdr->ip_sum = cksum(new_ip_hdr, sizeof(sr_ip_hdr_t));
 
         /* Make ICMP Header */
-        sr_icmp_t11_hdr_t *reply_icmp_hdr = (sr_icmp_t11_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        reply_icmp_hdr->icmp_type = time_exceeded_type;
-        reply_icmp_hdr->icmp_code = time_exceeded_code;
-        reply_icmp_hdr->unused = 0;
-        reply_icmp_hdr->icmp_sum = 0;
-        memcpy(reply_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE);
-        reply_icmp_hdr->icmp_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
+        sr_icmp_t11_hdr_t *new_icmp_hdr = (sr_icmp_t11_hdr_t *)(new_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        new_icmp_hdr->icmp_type = time_exceeded_type;
+        new_icmp_hdr->icmp_code = time_exceeded_code;
+        new_icmp_hdr->unused = 0;
+        new_icmp_hdr->icmp_sum = 0;
+        memcpy(new_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE);
+        new_icmp_hdr->icmp_sum = cksum(new_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
 
         /* Send time exceeded ICMP packet */
         print_hdrs(new_packet, packet_len);
