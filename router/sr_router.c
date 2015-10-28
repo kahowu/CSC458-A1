@@ -443,9 +443,13 @@ void send_echo_reply (struct sr_instance* sr, uint8_t * packet, unsigned int len
     memset(&(icmp_hdr->icmp_sum), 0, sizeof(uint16_t));
     icmp_hdr->icmp_sum = cksum(icmp_hdr, len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
     
-
-    struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, interface);
-    handle_arpreq(req, sr);
+    struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache, ip_hdr->ip_dst);
+    if (arp_entry) {
+    	sr_send_packet (sr, packet, len, interface);
+    } else {
+        struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_dst, packet, len, interface);
+        handle_arpreq(req, sr);
+    }
 }
 
 /* Send ARP request */
