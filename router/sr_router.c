@@ -188,11 +188,11 @@ void sr_iphandler (struct sr_instance* sr,
     /* If time exceeded, send out time exceeded message */
     if (decrement_and_recalculate (ip_hdr)){
         printf("TTL of IP is 0. Time exceeded. \n");
-        int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+        int packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t11_hdr_t);
         uint8_t *new_packet = malloc(packet_len);
 
         /* Create ethernet header */
-        create_ethernet_header (eth_hdr, new_packet, sr_get_interface(sr, interface)->addr, eth_hdr->ether_shost, htons(ethertype_ip));
+        create_ethernet_header (eth_hdr, new_packet, sr_get_interface(sr, interface)->addr, eth_hdr->ether_shost, htons(ethertype_ip)); 
 
         /* Create IP header 
         create_ip_header (ip_hdr, new_packet, sr_get_interface(sr, interface)->ip, ip_hdr->ip_src); */
@@ -221,11 +221,12 @@ void sr_iphandler (struct sr_instance* sr,
         reply_icmp_hdr->icmp_code = time_exceeded_code;
         reply_icmp_hdr->unused = 0;
         reply_icmp_hdr->icmp_sum = 0;
-        memcpy(reply_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE_T11);
+        memcpy(reply_icmp_hdr->data, ip_hdr, ICMP_DATA_SIZE);
         reply_icmp_hdr->icmp_sum = cksum(reply_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
 
         /* Send time exceeded ICMP packet */
-        sr_send_packet(sr, new_packet, len, interface);
+        print_hdrs(new_packet, packet_len);
+        sr_send_packet(sr, new_packet, packet_len, interface);
 
         free (new_packet);
 
@@ -373,7 +374,7 @@ int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len) {
 }
 
 /* Decrement TTL and calculate new checksum */
-int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr) {
+int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr) { 
     if (ip_hdr->ip_ttl <= 1){
         return 1;
     } else {
