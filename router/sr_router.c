@@ -225,8 +225,13 @@ void sr_iphandler (struct sr_instance* sr,
         new_icmp_hdr->icmp_sum = cksum(new_icmp_hdr, sizeof(sr_icmp_t11_hdr_t));
 
         /* Send time exceeded ICMP packet */
-        print_hdrs(new_packet, packet_len);
-        sr_send_packet(sr, new_packet, packet_len, interface);
+        struct sr_arpentry * arp_entry = sr_arpcache_lookup (sr_cache, ip_hdr->ip_src);
+        if (arp_entry) {
+            sr_send_packet (sr, new_packet, packet_len, interface);
+        } else {
+            struct sr_arpreq * req = sr_arpcache_queuereq(sr_cache, ip_hdr->ip_src, new_packet, packet_len, interface);
+            handle_arpreq(req, sr);
+        }
 
         free (new_packet);
 
