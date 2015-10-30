@@ -280,7 +280,8 @@ void sr_iphandler (struct sr_instance* sr,
 
             /* Send ICMP port unreachable message */
             sr_send_packet (sr, new_packet, packet_len, interface);
-
+          
+            free(new_packet);
             return; 
         }
     /* Not for me*/ 
@@ -329,6 +330,8 @@ void sr_iphandler (struct sr_instance* sr,
             send_icmp_type3_msg (new_packet, src_lpm, sr_cache, sr, interface, packet_len); 
 
             free (new_packet);
+	    
+            return; 
         }
     }
 }
