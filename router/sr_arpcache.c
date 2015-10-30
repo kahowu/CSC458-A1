@@ -76,7 +76,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             new_arp_hdr->ar_op = htons(arp_op_request);
             memcpy(new_arp_hdr->ar_sha, target_iface->addr, sizeof(unsigned char)*ETHER_ADDR_LEN);
             new_arp_hdr->ar_sip = target_iface->ip;
-            memset(new_arp_hdr->ar_tha, 0, sizeof(unsigned char)*ETHER_ADDR_LEN);
+            memset(new_arp_hdr->ar_tha, 255, sizeof(unsigned char)*ETHER_ADDR_LEN);
             new_arp_hdr->ar_tip = req->ip;
 
             sr_send_packet(sr, new_packet, packet_len, target_iface->name);            
