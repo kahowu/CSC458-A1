@@ -45,8 +45,6 @@
 #define IP_MAXPACKET 65535
 #endif
 
-
-
 /* FIXME
  * ohh how lame .. how very, very lame... how can I ever go out in public
  * again?! /mc
@@ -76,7 +74,6 @@
 #endif
 #define ICMP_DATA_SIZE 28
 
-
 /* Structure of a ICMP header
  */
 struct sr_icmp_hdr {
@@ -102,6 +99,17 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
+/* Structure of a type11 ICMP header
+ */
+struct sr_icmp_t11_hdr {
+  uint8_t icmp_type;
+  uint8_t icmp_code;
+  uint16_t icmp_sum;
+  uint32_t unused;
+  uint8_t data[ICMP_DATA_SIZE];
+
+} __attribute__ ((packed)) ;
+typedef struct sr_icmp_t11_hdr sr_icmp_t11_hdr_t;
 
 
 /*
@@ -152,6 +160,8 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
+  ip_protocol_udp = 0x11,
+  ip_protocol_tcp = 0x06,
 };
 
 enum sr_ethertype {
@@ -169,6 +179,34 @@ enum sr_arp_hrd_fmt {
   arp_hrd_ethernet = 0x0001,
 };
 
+enum time_exceeded {
+  time_exceeded_type = 11,
+  time_exceeded_code = 0,
+};
+
+enum port_unreachable {
+  port_unreachable_type = 3,
+  port_unreachable_code = 3,
+};
+
+enum dest_host_unreachable {
+  dest_host_unreachable_type = 3,
+  dest_host_unreachable_code = 1,
+};
+
+enum dest_net_unreachable {
+  dest_net_unreachable_type = 3,
+  dest_net_unreachable_code = 0,
+};
+
+enum echo_reply {
+  echo_reply_type = 0,
+  echo_reply_code = 0,
+};
+
+enum echo_request {
+  icmp_echo_request = 8,
+};
 
 struct sr_arp_hdr
 {
@@ -185,5 +223,10 @@ struct sr_arp_hdr
 typedef struct sr_arp_hdr sr_arp_hdr_t;
 
 #define sr_IFACE_NAMELEN 32
+#define ETH_HDR 0
+#define ARP_PACKET 1
+#define IP_PACKET 2
+#define ICMP_PACKET 3
+#define ICMP_TYPE3_PACKET 4
 
 #endif /* -- SR_PROTOCOL_H -- */
