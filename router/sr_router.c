@@ -383,10 +383,10 @@ int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len) {
 
 /* Decrement TTL and calculate new checksum */
 int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr) { 
-    if (ip_hdr->ip_ttl <= 1){
+    ip_hdr->ip_ttl --;
+    if (ip_hdr->ip_ttl <= 0){
         return 1;
     } else {
-        ip_hdr->ip_ttl = ip_hdr->ip_ttl - 1;
         memset(&(ip_hdr->ip_sum), 0, sizeof(uint16_t));
         ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
     }

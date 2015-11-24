@@ -17,8 +17,7 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
     struct sr_arpcache *sr_cache = &sr->cache;
     time_t curr_time;
     time(&curr_time);
-    double one_sec = 1.0;
-    if (difftime(curr_time, req->sent) >  one_sec){
+    if (difftime(curr_time, req->sent) >= 0.9){
         struct sr_packet *packet = req->packets; 
         /* If packet is sent more than equal or more than 5 times, send ICMP host unreachable message */
         if ((req->times_sent) >= 5) {
