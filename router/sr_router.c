@@ -208,7 +208,7 @@ void sr_iphandler (struct sr_instance* sr,
         new_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t11_hdr_t));
         new_ip_hdr->ip_id = htons(0);
         new_ip_hdr->ip_off = htons(IP_DF);
-        new_ip_hdr->ip_ttl = 64;
+        new_ip_hdr->ip_ttl = 100;
         new_ip_hdr->ip_dst = ip_hdr->ip_src;
         new_ip_hdr->ip_p = ip_protocol_icmp;
         new_ip_hdr->ip_src = sr_get_interface(sr, interface)->ip;
@@ -383,7 +383,7 @@ int verify_icmp_checksum (sr_icmp_hdr_t *icmp_hdr, int type, int len) {
 
 /* Decrement TTL and calculate new checksum */
 int decrement_and_recalculate (sr_ip_hdr_t *ip_hdr) { 
-    ip_hdr->ip_ttl --;
+    ip_hdr->ip_ttl--;
     if (ip_hdr->ip_ttl <= 0){
         return 1;
     } else {
@@ -426,7 +426,7 @@ void create_ip_header (sr_ip_hdr_t *ip_hdr, uint8_t* new_packet, uint32_t ip_src
     new_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
     new_ip_hdr->ip_id = htons(0);
     new_ip_hdr->ip_off = htons(IP_DF);
-    new_ip_hdr->ip_ttl = 64;
+    new_ip_hdr->ip_ttl = 100;
     new_ip_hdr->ip_dst = ip_dst;
     new_ip_hdr->ip_p = ip_protocol_icmp;
     new_ip_hdr->ip_src = ip_src;
@@ -468,6 +468,7 @@ void send_echo_reply (struct sr_instance* sr, uint8_t * packet, unsigned int len
     uint32_t src_ip = ip_hdr->ip_src;
     ip_hdr->ip_src = ip_hdr->ip_dst;
     ip_hdr->ip_dst = src_ip;
+    ip_hdr->ip_ttl = 100;
     memset(&(ip_hdr->ip_sum), 0, sizeof(uint16_t));
     ip_hdr->ip_sum = cksum(ip_hdr, sizeof(sr_ip_hdr_t));
 

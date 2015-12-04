@@ -81,8 +81,8 @@ void handle_arpreq (struct sr_arpreq * req, struct sr_instance *sr) {
             sr_send_packet(sr, new_packet, packet_len, target_iface->name);            
             free(new_packet);
         }
-            req->sent = curr_time;
-            req->times_sent = req->times_sent + 1;
+        req->sent = curr_time;
+        req->times_sent = req->times_sent + 1;
     }   
 }
 
